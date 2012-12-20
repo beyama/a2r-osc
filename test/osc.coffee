@@ -6,9 +6,9 @@ describe "OscBufferWriter", ->
   writer = null
 
   beforeEach ->
-    buffer = new Buffer(24)
+    writer = new osc.OscBufferWriter(24)
+    buffer = writer.buffer
     buffer.fill(20)
-    writer = new osc.OscBufferWriter(buffer)
 
   numberWriter =
     writeInt32:
@@ -256,8 +256,8 @@ describe "OscPacketGenerator", ->
     buffer.readUInt32BE(8).should.be.equal 0
     buffer.readUInt32BE(12).should.be.equal 1
     # size of first element
-    size = bundle.elements[0].size()
-    buffer.readInt32BE(16).should.be.equal size
+    element = bundle.elements[0]
+    buffer.readInt32BE(16).should.be.equal element.toBuffer().length
     # path
     buffer.toString("utf8", 20, 25).should.be.equal "/foo1"
     # ...
@@ -287,3 +287,29 @@ describe "Message", ->
 
     it "should check consitent length of type tag and payload", ->
       (-> new osc.Message("/foo", "si", ["osc"]) ).should.throw()
+
+describe "compressed addresses", ->
+  dict = { 1: "/foo", 2: "/bar" }
+  dict[v] = k for k, v of dict
+
+  buffer = null
+
+  beforeEach ->
+    buffer = new osc.Message("/foo", 2.2).toBuffer(dict)
+    
+  it "should generate message with compressed address", ->
+    # unpack message without dict to check
+    msg = osc.fromBuffer(buffer)
+    msg.address.should.be.equal "/"
+    msg.typeTag.should.be.equal "if"
+    msg.payload[0].should.be.equal Number(dict["/foo"])
+
+  it "should unpack message with compressed address", ->
+    msg = osc.fromBuffer(buffer, dict)
+    msg.address.should.be.equal "/foo"
+    msg.typeTag.should.be.equal "f"
+    msg.payload.should.have.length 1
+
+  it "should throw an error if the address id not foung", ->
+    buffer.writeInt32BE(3, 8) # overwrite id with 3
+    (-> osc.fromBuffer(buffer, dict) ).should.throw()

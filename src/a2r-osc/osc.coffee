@@ -31,6 +31,7 @@ toNTP = (date)->
   fraction = Math.round(((time % 1000) * 0x100000000) / 1000)
   [seconds + SECONDS_FROM_1900_to_1970, fraction]
 
+# Type handler
 OSC_TYPES =
   i:
     name:   "integer"
@@ -141,20 +142,32 @@ oscSizeOfBlob = (buf)->
   length + oscPadding(length)
 
 # Calculate size of bundle.
-oscSizeOfBundle = (bundle)->
+oscSizeOfBundle = (bundle, dict)->
   # #bundle string + timetag
   size = 16
   # sizeof elements
   for elem in bundle.elements
-    size += 4 + oscSizeOfMessage(elem)
+    size += 4 + oscSizeOfMessage(elem, dict)
   size
 
 # Calculate size of message
-oscSizeOfMessage = (msg)->
+oscSizeOfMessage = (msg, dict)->
+  addressId = dict?[msg.address]
+  
   # sizeof address
-  size = oscSizeOfString(msg.address)
+  if addressId
+    # 4 byte for '/' and 4 byte for addressId
+    size = 8
+  else
+    # size of osc string
+    size = oscSizeOfString(msg.address)
   # sizeof typeTag
-  tl = msg.typeTag.length + 1
+  if addressId
+    # typeTag + ';' and 'i' for addressId
+    tl = msg.typeTag.length + 2
+  else
+    # typeTag + ';'
+    tl = msg.typeTag.length + 1
   size += tl + oscPadding(tl)
 
   # sizeof payload data
@@ -178,13 +191,8 @@ oscSizeOf = (value, code)->
 
     type.sizeOf(value)
   else
-    if value instanceof Message
-      oscSizeOfMessage(value)
-    else if value instanceof Bundle
-      oscSizeOfBundle(value)
-    else
-      code = oscTypeCodeOf(value)
-      oscSizeOf(value, code)
+    code = oscTypeCodeOf(value)
+    oscSizeOf(value, code)
 
 # Class for representing a message.
 class Message
@@ -226,10 +234,8 @@ class Message
 
   # Convenience method, creates an instance of OscPacketGenerator,
   # generates packet and returns the buffer.
-  toBuffer: (buffer, pos)->
-    new OscPacketGenerator(@, buffer, pos).generate()
-
-  size: -> oscSizeOfMessage(@)
+  toBuffer: (dict)->
+    new OscPacketGenerator(@, dict).generate()
 
 # Class for representing a bundle.
 class Bundle
@@ -258,10 +264,8 @@ class Bundle
 
   # Convenience method, creates an instance of OscPacketGenerator,
   # generates packet and returns the buffer.
-  toBuffer: (buffer, pos)->
-    new OscPacketGenerator(@, buffer, pos).generate()
-
-  size: -> oscSizeOfBundle(@)
+  toBuffer: (dict)->
+    new OscPacketGenerator(@, dict).generate()
 
 # Buffer read-access layer
 class OscBufferReader
@@ -275,6 +279,11 @@ class OscBufferReader
   # Is it a bundle?
   isBundle: ->
     @toString("utf8", @pos, @pos + 7) is "#bundle"
+
+  # Has compressed address string
+  isCompressed: ->
+    # return true if we've a dict and the next 4 bytes are '/\0\0\0\0'
+    @dict and @buffer.readInt32BE(@pos) is 0x2f000000
 
   # Convenience method which delegates to the toString
   # method of the underlying Buffer.
@@ -339,9 +348,9 @@ for type, size of TYPE_BYTE_SIZE
 
 # Buffer write-access layer
 class OscBufferWriter
-  constructor: (buffer, pos=0)->
-    @buffer = buffer
-    @pos = pos
+  constructor: (size)->
+    @buffer = new Buffer(size)
+    @pos = 0
 
   # Write a string to the underlying buffer.
   writeString: (string)->
@@ -385,7 +394,13 @@ for type, size of TYPE_BYTE_SIZE
 
 # The OSC packet parser.
 class OscPacketParser extends OscBufferReader
-  constructor: (buffer, pos)-> super(buffer, pos)
+  constructor: (buffer, pos, dict)->
+    if typeof pos is "object"
+      @dict = pos
+      pos = undefined
+    else
+      @dict = dict
+    super(buffer, pos)
 
   parse: ->
     if @isBundle()
@@ -395,9 +410,26 @@ class OscPacketParser extends OscBufferReader
       @parseMessage()
 
   parseMessage: ->
-    address = @readAddress()
-    typeTag = @readTypeTag()
-    payload = @parsePayload(typeTag)
+    if @isCompressed()
+      # skip address
+      @readInt32()
+      typeTag = @readTypeTag()
+      payload = @parsePayload(typeTag)
+      # check for int32 as first type
+      if typeTag.charAt(0) isnt 'i'
+        throw new Error("Messages with compressed addresses must have an integer as first payload type")
+      # slice type tag
+      typeTag = typeTag[1..0]
+      # get address id
+      addressId = payload.shift()
+      # resolve address
+      address = @dict[addressId]
+      unless address
+        throw new Error("No address with id `#{addressId}` found")
+    else
+      address = @readAddress()
+      typeTag = @readTypeTag()
+      payload = @parsePayload(typeTag)
 
     new Message(address, typeTag, payload)
 
@@ -406,7 +438,7 @@ class OscPacketParser extends OscBufferReader
     elements = []
 
     while true
-      size     = @readUInt32()
+      size     = @readInt32()
       boundary = @pos + size
       address  = @readAddress()
       typeTag  = @readTypeTag()
@@ -429,7 +461,7 @@ class OscPacketParser extends OscBufferReader
 
     while i < tag.length
       if boundary and @pos >= boundary
-        throw new StrictError("Message boundary reached")
+        throw new Error("Message boundary reached")
 
       code = tag.charAt(i++)
 
@@ -460,21 +492,27 @@ class OscPacketParser extends OscBufferReader
     tag
 
 class OscPacketGenerator extends OscBufferWriter
-  constructor: (messageOrBundle, buffer, pos)->
+  constructor: (messageOrBundle, dict)->
+    @dict = dict
+
     if messageOrBundle instanceof Bundle
       @bundle = messageOrBundle
+      size = oscSizeOfBundle(@bundle, @dict)
     else
       @message = messageOrBundle
+      size = oscSizeOfMessage(@message, @dict)
 
-    unless buffer
-      size = oscSizeOf(messageOrBundle)
-      buffer = new Buffer(size)
+    super(size)
 
-    super(buffer, pos)
-
-  generateMessage: (msg)-> # TODO: boundary check for bundles
-    @writeString(msg.address)
-    @writeString(",#{msg.typeTag}")
+  generateMessage: (msg)->
+    # compress if possible
+    if @dict and (addressId = @dict[msg.address])
+      @writeUInt32(0x2f000000)
+      @writeString(",i#{msg.typeTag}")
+      @writeInt32(toInteger(addressId))
+    else
+      @writeString(msg.address)
+      @writeString(",#{msg.typeTag}")
 
     i = 0
     l = msg.typeTag.length
@@ -500,7 +538,7 @@ class OscPacketGenerator extends OscBufferWriter
     @writeTimetag(tag)
     # generate elements
     for elem in bundle.elements
-      @writeInt32(oscSizeOfMessage(elem))
+      @writeInt32(oscSizeOfMessage(elem, @dict))
       @generateMessage(elem)
     null
 
@@ -512,8 +550,8 @@ class OscPacketGenerator extends OscBufferWriter
     @buffer
 
 # Parse OSC message/bundle from buffer
-fromBuffer = (buffer, pos)->
-  new OscPacketParser(buffer, pos).parse()
+fromBuffer = (buffer, pos, dict)->
+  new OscPacketParser(buffer, pos, dict).parse()
 
 exports = module.exports
 exports.fromBuffer = fromBuffer
