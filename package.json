@@ -1,6 +1,7 @@
 {
   "name": "a2r-osc",
   "version": "0.0.1",
+  "dependencies": {},
   "devDependencies": {
     "mocha": "*",
     "should": "*",

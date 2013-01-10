@@ -170,12 +170,12 @@ oscSizeOfMessage = (msg, dict)->
     tl = msg.typeTag.length + 1
   size += tl + oscPadding(tl)
 
-  # sizeof payload data
+  # sizeof arguments data
   i = 0
   l = msg.typeTag.length
   while i < l
     typeCode = msg.typeTag.charAt(i)
-    value = msg.payload[i++]
+    value = msg.arguments[i++]
     size += oscSizeOf(value, typeCode)
   size
 
@@ -196,23 +196,23 @@ oscSizeOf = (value, code)->
 
 # Class for representing a message.
 class Message
-  constructor: (address, typeTag, payload)->
+  constructor: (address, typeTag, args)->
     @address = address
 
-    if typeTag and not payload?
-      payload = typeTag
+    if typeTag and not args?
+      args    = typeTag
       typeTag = null
 
-    payload = [payload] unless Array.isArray(payload)
+    args = [args] unless Array.isArray(args)
 
     # if type tag is given
     if typeTag
       @typeTag = typeTag
-      @payload = payload
+      @arguments = args
     # else generate type tag
     else
       @typeTag = ""
-      @payload = for value in payload
+      @arguments = for value in args
         if typeof value is 'object' and value?.type?
           code = value.type
           type = OSC_TYPES[code] || OSC_TYPES_BY_NAME[code]
@@ -221,16 +221,16 @@ class Message
 
           @typeTag += type.code
 
-          # Types without payload data have no sizeOf method
+          # Types without arguments data have no sizeOf method
           # and return their values on read.
           if type.sizeOf then value.value else type.read()
         else
           @typeTag += oscTypeCodeOf(value)
           value
 
-    # check for consistent lengths of payload and type tag
-    if @payload.length isnt @typeTag.length
-      throw new Error("Payload data doesn't match typetag")
+    # check for consistent lengths of arguments and type tag
+    if @arguments.length isnt @typeTag.length
+      throw new Error("Arguments doesn't match typetag")
 
   # Convenience method, creates an instance of OscPacketGenerator,
   # generates packet and returns the buffer.
@@ -248,18 +248,18 @@ class Bundle
       @elements = []
 
   # Add a message to elements list and return the message.
-  addElement: (address, typeTag, payload)->
+  addElement: (address, typeTag, args)->
     if address instanceof Message
       @elements.push address
       address
     else
-      msg = new Message(address, typeTag, payload)
+      msg = new Message(address, typeTag, args)
       @elements.push msg
       msg
 
   # Add a message to elements list and returns self (for chaining).
-  message: (address, typeTag, payload)->
-    @addElement(address, typeTag, payload)
+  message: (address, typeTag, args)->
+    @addElement(address, typeTag, args)
     @
 
   # Convenience method, creates an instance of OscPacketGenerator,
@@ -414,14 +414,14 @@ class OscPacketParser extends OscBufferReader
       # skip address
       @readInt32()
       typeTag = @readTypeTag()
-      payload = @parsePayload(typeTag)
+      args = @parseArguments(typeTag)
       # check for int32 as first type
       if typeTag.charAt(0) isnt 'i'
-        throw new Error("Messages with compressed addresses must have an integer as first payload type")
+        throw new Error("Messages with compressed addresses must have an integer as first arguments type")
       # slice type tag
       typeTag = typeTag[1..0]
       # get address id
-      addressId = payload.shift()
+      addressId = args.shift()
       # resolve address
       address = @dict[addressId]
       unless address
@@ -429,9 +429,9 @@ class OscPacketParser extends OscBufferReader
     else
       address = @readAddress()
       typeTag = @readTypeTag()
-      payload = @parsePayload(typeTag)
+      args    = @parseArguments(typeTag)
 
-    new Message(address, typeTag, payload)
+    new Message(address, typeTag, args)
 
   parseBundle: ->
     timetag  = @readTimetag()
@@ -442,9 +442,9 @@ class OscPacketParser extends OscBufferReader
       boundary = @pos + size
       address  = @readAddress()
       typeTag  = @readTypeTag()
-      payload  = @parsePayload(typeTag, boundary)
+      args     = @parseArguments(typeTag, boundary)
 
-      elements.push new Message(address, typeTag, payload)
+      elements.push new Message(address, typeTag, args)
       break if @isEnd()
 
     new Bundle(timetag, elements)
@@ -454,7 +454,7 @@ class OscPacketParser extends OscBufferReader
   #
   # tag: The type tag.
   # boundary: The boundary of the message, used for bundles.
-  parsePayload: (tag, boundary)->
+  parseArguments: (tag, boundary)->
     i = 0
 
     values = []
@@ -518,7 +518,7 @@ class OscPacketGenerator extends OscBufferWriter
     l = msg.typeTag.length
     while i < l
       code  = msg.typeTag.charAt(i)
-      value = msg.payload[i++]
+      value = msg.arguments[i++]
 
       # get type handler
       type = OSC_TYPES[code]
@@ -554,7 +554,6 @@ fromBuffer = (buffer, pos, dict)->
   new OscPacketParser(buffer, pos, dict).parse()
 
 exports = module.exports
-exports.fromBuffer = fromBuffer
 exports.Message = Message
 exports.Bundle  = Bundle
 exports.Impulse = Impulse
@@ -562,3 +561,4 @@ exports.OscBufferReader = OscBufferReader
 exports.OscBufferWriter = OscBufferWriter
 exports.OscPacketGenerator = OscPacketGenerator
 exports.OscPacketParser = OscPacketParser
+exports.fromBuffer = fromBuffer
