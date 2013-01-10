@@ -1,237 +1,255 @@
 osc = require "../"
 should = require "should"
 
-describe "OscBufferWriter", ->
-  buffer = null
-  writer = null
+length = (b)->
+  if b instanceof ArrayBuffer then b.byteLength else b.length
 
-  beforeEach ->
-    writer = new osc.OscBufferWriter(24)
-    buffer = writer.buffer
-    buffer.fill(20)
+fill = (b, v)->
+  i = 0
+  l = length(b)
+  while i < l
+    b[i++] = v
 
-  numberWriter =
-    writeInt32:
-      name: "int32"
-      size: 4
-      value: -24
-      test: "readInt32BE"
-    writeUInt32:
-      name: "uint32"
-      size: 4
-      value: 24
-      test: "readUInt32BE"
-    writeFloat:
-      name: "float"
-      size: 4
-      value: 1.234
-      test: "readFloatBE"
-    writeDouble:
-      name: "double"
-      size: 8
-      value: 1.234
-      test: "readDoubleBE"
+for bufferType in [Buffer, ArrayBuffer]
+  do (bufferType)->
+    describe "OscBufferWriter with #{bufferType.name}", ->
+      buffer = null
+      writer = null
+      reader = null
 
-  for method, d of numberWriter
-    describe ".#{method}", ->
-      it "should write a(n) #{d.name} value", ->
-        writer[method](d.value)
-        buffer[d.test](0).should.be.equal d.value
-        writer.pos.should.be.equal d.size
+      beforeEach ->
+        buffer = new bufferType(23)
+        writer = new osc.OscBufferWriter(buffer)
+        reader = new osc.OscBufferReader(buffer)
 
-      it "should start writing from pos", ->
-        writer.pos = 4
-        writer[method](d.value)
-        buffer[d.test](4).should.be.equal d.value
-        writer.pos.should.be.equal d.size + 4
+      numberWriter =
+        writeInt32:
+          name: "Int32"
+          size: 4
+          value: -24
+        writeUInt32:
+          name: "UInt32"
+          size: 4
+          value: 24
+        writeFloat:
+          name: "Float"
+          size: 4
+          value: 1.234
+        writeDouble:
+          name: "Double"
+          size: 8
+          value: 1.234
 
-  describe ".writeString", ->
-    it "should write a sequence of non-null UTF-8 characters followed by a null", ->
-      str = "osc"
-      writer.writeString(str)
-      buffer.toString("utf8", 0, 3).should.be.equal str
-      buffer[3].should.be.equal 0
-      writer.pos.should.be.equal 4
+      for method, d of numberWriter
+        do (method, d)->
+          describe ".#{method}", ->
+            it "should write type #{d.name}", ->
+              writer["write#{d.name}"](d.value)
+              value = reader["read#{d.name}"]()
+              if d.name is "Float"
+                value = Math.round(value * 1000) / 1000
+              value.should.be.equal d.value
+              writer.pos.should.be.equal d.size
 
-    it "should add 0-3 additional null characters to make the total number of bits a multiple of 32", ->
-      str = "bang"
-      writer.writeString(str)
-      buffer.toString("utf8", 0, 4).should.be.equal str
-      i = 4
-      while i < 8
-        buffer[i++].should.be.equal 0
-      writer.pos.should.be.equal 8
+            it "should start writing from pos", ->
+              writer.pos = 4
+              reader.pos = 4
+              writer["write#{d.name}"](d.value)
+              value = reader["read#{d.name}"]()
+              if d.name is "Float"
+                value = Math.round(value * 1000) / 1000
+              value.should.be.equal d.value
+              writer.pos.should.be.equal d.size + 4
 
-    it "should start writing from pos", ->
-      writer.pos = 4
-      str = "bang"
-      writer.writeString(str)
-      buffer.toString("utf8", 4, 8).should.be.equal str
+      describe ".writeString", ->
+        it "should write a sequence of non-null ASCII characters and should terminate with null", ->
+          str = "osc"
+          writer.writeString(str)
+          reader.toString("ascii", 0, 3).should.be.equal str
+          buffer[3].should.be.equal 0
+          writer.pos.should.be.equal 4
 
-    it "should handle utf8 string length correct", ->
-      str = '\u00bd + \u00bc = \u00be'
-      writer.writeString(str)
-      writer.pos.should.be.equal 16
+        it "should add 0-3 additional null characters to make the total number of bits a multiple of 32", ->
+          str = "bang"
+          writer.writeString(str)
+          reader.toString("ascii", 0, 4).should.be.equal str
+          i = 4
+          while i < 8
+            buffer[i++].should.be.equal 0
+          writer.pos.should.be.equal 8
 
-  describe ".writeBlob", ->
-    it "should write an int32 size count, followed by that many 8-bit bytes of arbitrary binary data", ->
-      blob = new Buffer("bang")
-      writer.writeBlob(blob)
-      buffer.readInt32BE(0).should.be.equal 4
-      i = 0
-      while i < blob.length
-        buffer[i+4].should.be.equal blob[i]
-        i++
-      writer.pos.should.be.equal 8
+        it "should start writing from pos", ->
+          writer.pos = 4
+          str = "bang"
+          writer.writeString(str)
+          reader.toString("ascii", 4, 8).should.be.equal str
 
-    it "should add 0-3 additional zero bytes to make the total number of bits a multiple of 32", ->
-      blob = new Buffer("osc")
-      writer.writeBlob(blob)
-      buffer[7].should.be.equal 0
-      writer.pos.should.be.equal 8
+      describe ".writeBlob", ->
+        it "should write an int32 size count, followed by that many 8-bit bytes of arbitrary binary data", ->
+          blob = new Buffer("bang")
+          writer.writeBlob(blob)
+          reader.readInt32().should.be.equal 4
+          i = 0
+          while i < blob.length
+            buffer[i+4].should.be.equal blob[i]
+            i++
+          writer.pos.should.be.equal 8
 
-describe "OscBufferReader", ->
-  buffer = null
-  reader = null
+        it "should add 0-3 additional zero bytes to make the total number of bits a multiple of 32", ->
+          blob = new Buffer("osc")
+          writer.writeBlob(blob)
+          buffer[7].should.be.equal 0
+          writer.pos.should.be.equal 8
 
-  beforeEach ->
-    buffer = new Buffer(24)
-    buffer.fill(20)
-    reader = new osc.OscBufferReader(buffer)
+    describe "OscBufferReader with #{bufferType.name}", ->
+      buffer = null
+      reader = null
+      writer = null
 
-  numberReader =
-    readInt32:
-      name: "int32"
-      size: 4
-      value: -24
-      test: "writeInt32BE"
-    readUInt32:
-      name: "uint32"
-      size: 4
-      value: 24
-      test: "writeUInt32BE"
-    readFloat:
-      name: "float"
-      size: 4
-      value: 1.234
-      test: "writeFloatBE"
-    readDouble:
-      name: "double"
-      size: 8
-      value: 1.234
-      test: "writeDoubleBE"
+      beforeEach ->
+        buffer = new bufferType(24)
+        reader = new osc.OscBufferReader(buffer)
+        writer = new osc.OscBufferWriter(buffer)
 
-  for method, d of numberReader
-    describe ".#{method}", ->
-      it "should read a(n) #{d.name} value", ->
-        buffer[d.test](d.value, 0)
-        reader[method]().should.be.equal d.value
-        reader.pos.should.be.equal d.size
+      numberReader =
+        readInt32:
+          name: "Int32"
+          size: 4
+          value: -24
+        readUInt32:
+          name: "UInt32"
+          size: 4
+          value: 24
+        readFloat:
+          name: "Float"
+          size: 4
+          value: 1.234
+        readDouble:
+          name: "Double"
+          size: 8
+          value: 1.234
 
-      it "should start reading from pos", ->
-        buffer[d.test](d.value, 4)
-        reader.pos = 4
-        reader[method]().should.be.equal d.value
+      for method, d of numberReader
+        do (method, d)->
+          describe ".#{method}", ->
+            it "should read type #{d.name}", ->
+              writer["write#{d.name}"](d.value)
+              value = reader[method]()
+              if d.name is "Float"
+                value = Math.round(value * 1000) / 1000
+              value.should.be.equal d.value
+              reader.pos.should.be.equal d.size
 
-  describe ".readString", ->
-    beforeEach -> buffer.fill 0
+            it "should start reading from pos", ->
+              writer.pos = 4
+              reader.pos = 4
+              writer["write#{d.name}"](d.value)
+              value = reader[method]()
+              if d.name is "Float"
+                value = Math.round(value * 1000) / 1000
+              value.should.be.equal d.value
 
-    it "should throw an error if no data left", ->
-      reader.pos = buffer.length
-      (-> reader.readString() ).should.throw()
+      describe ".readString", ->
+        beforeEach -> fill(buffer, 0)
 
-    it "should throw an error if no null found", ->
-      buffer.fill 97
-      (-> reader.readString() ).should.throw()
+        it "should throw an error if no data left", ->
+          reader.pos = length(buffer)
+          (-> reader.readString() ).should.throw()
 
-    it "should read a sequence of non-null UTF-8 characters", ->
-      str = "osc"
-      buffer.write(str)
-      reader.readString().should.be.equal str
-      reader.pos.should.be.equal 4
+        it "should throw an error if no null found", ->
+          fill(buffer, 97)
+          (-> reader.readString() ).should.throw()
 
-    it "should set pos to position behind additional 0 characters", ->
-      str = "bang"
-      buffer.write(str)
-      reader.readString().should.be.equal str
-      reader.pos.should.be.equal 8
+        it "should read a sequence of non-null ASCII characters", ->
+          str = "osc"
+          writer.writeString(str)
+          reader.readString().should.be.equal str
+          reader.pos.should.be.equal 4
 
-    it "should start reading from pos", ->
-      str = "bang"
-      buffer.write(str, 4)
-      reader.pos = 4
-      reader.readString().should.be.equal str
+        it "should set pos to position behind additional 0 characters", ->
+          str = "bang"
+          writer.writeString(str)
+          reader.readString().should.be.equal str
+          reader.pos.should.be.equal 8
 
-  describe ".readBlob", ->
-    it "should read a blob", ->
-      buffer.fill(0)
-      buffer.writeInt32BE(15, 0)
-      buf = new Buffer("Addicted2Random")
-      buf.copy(buffer, 4)
-      buf2 = reader.readBlob()
-      buf2.should.be.an.instanceof Buffer
-      buf.length.should.be.equal buf2.length
+        it "should start reading from pos", ->
+          str = "bang"
+          reader.pos = 4
+          writer.pos = 4
+          writer.writeString(str, 4)
+          reader.readString().should.be.equal str
 
-      i = 0
-      while i < buf2.length
-        buf[i].should.be.equal buf2[i]
-        i++
-      reader.pos.should.be.equal 20
+      describe ".readBlob", ->
+        it "should read a blob", ->
+          buf = new bufferType(20)
+          i = 0
+          while i < 20
+            buf[i++] = Math.round(Math.random() * 255)
+          writer.writeBlob(buf)
 
-  describe ".readTimetag", ->
-    it "should read a 64bit NTP time from buffer and convert it to a Date object", ->
-      # 14236589681638796952 is equal to the 14th Jan 2005 at 17:58:59 and 12 milliseconds UTC
-      hi = 3314714339
-      lo = 51539608
+          buf2 = reader.readBlob()
+          buf2.should.be.an.instanceof bufferType
+          length(buf2).should.be.equal 20
 
-      buffer.writeUInt32BE(hi, 0)
-      buffer.writeUInt32BE(lo, 4)
-      date = reader.readTimetag()
-      date.ntpSeconds.should.be.equal hi
-      date.ntpFraction.should.be.equal lo
-      date.getUTCDate().should.be.equal 14
-      date.getUTCMonth().should.be.equal 0
-      date.getUTCFullYear().should.be.equal 2005
-      date.getUTCHours().should.be.equal 17
-      date.getUTCMinutes().should.be.equal 58
-      date.getUTCSeconds().should.be.equal 59
-      date.getMilliseconds().should.be.equal 12
+          i = 0
+          while i < 20
+            buf[i].should.be.equal buf2[i]
+            i++
+          reader.pos.should.be.equal 24
 
+      describe ".readTimetag", ->
+        it "should read a 64bit NTP time from buffer and convert it to a Date object", ->
+          # 14236589681638796952 is equal to the 14th Jan 2005 at 17:58:59 and 12 milliseconds UTC
+          hi = 3314714339
+          lo = 51539608
 
-describe "OscPacketParser", ->
-  it "should be able to parse messages generated by OscPacketGenerator", ->
-    codeToValue =
-      i: 1
-      d: 100000000000.1111
-      s: "foo"
-      c: 'a'
-      r: Number("0xffaabb")
-      T: true
-      F: false
-      I: osc.Impulse
-      t: new Date
+          writer.writeUInt32(hi)
+          writer.writeUInt32(lo)
+          date = reader.readTimetag()
+          date.ntpSeconds.should.be.equal hi
+          date.ntpFraction.should.be.equal lo
+          date.getUTCDate().should.be.equal 14
+          date.getUTCMonth().should.be.equal 0
+          date.getUTCFullYear().should.be.equal 2005
+          date.getUTCHours().should.be.equal 17
+          date.getUTCMinutes().should.be.equal 58
+          date.getUTCSeconds().should.be.equal 59
+          date.getMilliseconds().should.be.equal 12
 
-    for code, value of codeToValue
-      buffer = new osc.Message("/test", code, value).toBuffer()
-      msg = osc.fromBuffer(buffer)
-      msg.should.be.instanceof osc.Message
-      msg.typeTag.should.be.equal code
-      msg.arguments[0].should.be.equal value
+  describe "OscPacketParser", ->
+    it "should be able to parse messages generated by OscPacketGenerator", ->
+      codeToValue =
+        i: 1
+        d: 100000000000.1111
+        s: "foo"
+        c: 'a'
+        r: Number("0xffaabb")
+        T: true
+        F: false
+        I: osc.Impulse
+        t: new Date
 
-  it "should be able to parse bundle generated by OscPacketGenerator", ->
-    orig = new osc.Bundle([0, 1]).
-      message("/foo1", 1).
-      message("/foo2", 2)
-    buffer = orig.toBuffer()
+      for code, value of codeToValue
+        buffer = new osc.Message("/test", code, value).toBuffer()
+        msg = osc.fromBuffer(buffer)
+        msg.should.be.instanceof osc.Message
+        msg.typeTag.should.be.equal code
+        msg.arguments[0].should.be.equal value
 
-    bundle = osc.fromBuffer(buffer)
-    bundle.should.be.instanceof osc.Bundle
-    bundle.elements.should.have.length(2)
+    it "should be able to parse bundle generated by OscPacketGenerator", ->
+      orig = new osc.Bundle([0, 1]).
+        message("/foo1", 1).
+        message("/foo2", 2)
+      buffer = orig.toBuffer()
 
-    for elem, i in bundle.elements
-      elem.address.should.be.equal orig.elements[i].address
-      elem.typeTag.should.be.equal orig.elements[i].typeTag
-      elem.arguments[0].should.be.equal orig.elements[i].arguments[0]
+      bundle = osc.fromBuffer(buffer)
+      bundle.should.be.instanceof osc.Bundle
+      bundle.elements.should.have.length(2)
+
+      for elem, i in bundle.elements
+        elem.address.should.be.equal orig.elements[i].address
+        elem.typeTag.should.be.equal orig.elements[i].typeTag
+        elem.arguments[0].should.be.equal orig.elements[i].arguments[0]
 
 describe "OscPacketGenerator", ->
   it "should cast values before writing them to buffer", ->

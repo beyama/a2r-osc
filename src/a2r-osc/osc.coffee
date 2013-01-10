@@ -1,3 +1,6 @@
+# Node.js or Browser?
+nodeBuffer = typeof Buffer is 'function'
+
 toNumber = (val)->
   val = Number(val)
   throw new Error("Value isn't a number") if val is NaN
@@ -63,7 +66,7 @@ OSC_TYPES =
     sizeOf: (value)-> 8
   c:
     name:   "char"
-    read:   (reader)-> String.fromCharCode(reader.readInt32())
+    read:   (reader)-> String.fromCharCode(reader.readInt32() & 0x7F)
     write:  (writer, value)-> writer.writeInt32(value.charCodeAt(0))
     cast:   (value)-> value.toString().charAt(0)
     sizeOf: (value)-> 4
@@ -100,13 +103,31 @@ for code, type of OSC_TYPES
   type.code = code if code isnt 'S'
   OSC_TYPES_BY_NAME[type.name] = type
 
-# Size in bytes of the four
-# basic numeric types.
-TYPE_BYTE_SIZE =
-  Int32: 4
-  UInt32: 4
-  Float: 4
-  Double: 8
+NUMBERS =
+  Int32:
+    dataViewReader: "getInt32"
+    dataViewWriter: "setInt32"
+    bufferReader: "readInt32BE"
+    bufferWriter: "writeInt32BE"
+    size: 4
+  UInt32:
+    dataViewReader: "getUint32"
+    dataViewWriter: "setUint32"
+    bufferReader: "readUInt32BE"
+    bufferWriter: "writeUInt32BE"
+    size: 4
+  Float:
+    dataViewReader: "getFloat32"
+    dataViewWriter: "setFloat32"
+    bufferReader: "readFloatBE"
+    bufferWriter: "writeFloatBE"
+    size: 4
+  Double:
+    dataViewReader: "getFloat64"
+    dataViewWriter: "setFloat64"
+    bufferReader: "readDoubleBE"
+    bufferWriter: "writeDoubleBE"
+    size: 8
 
 oscPadding = (len)-> (4 - len % 4)
 
@@ -125,21 +146,24 @@ oscTypeCodeOf = (val)->
     when 'object'
       if val is null then 'N'
       else if val instanceof Date then 't'
-      else if Buffer.isBuffer(val) then 'b'
+      else if (nodeBuffer and Buffer.isBuffer(val)) or val instanceof ArrayBuffer then 'b'
       else if val is Impulse then 'I'
       else throw new Error("Unsupported type `#{val}`")
     else throw new Error("Unsupported type `#{val}`")
 
-# Get size of string plus padding.
-oscSizeOfString = (str)->
-  size = Buffer.byteLength(str)
-  size + oscPadding(size)
+# Get string length plus padding.
+oscSizeOfString = (str)-> str.length + oscPadding(str.length)
 
 # Get size of buffer plus 4 bytes for length
 # and plus padding.
 oscSizeOfBlob = (buf)->
-  length = 4 + buf.length
-  length + oscPadding(length)
+  if buf instanceof ArrayBuffer
+    length = 4 + buf.byteLength
+  else
+    length = 4 + buf.length
+  pad = oscPadding(length)
+  length += pad if pad < 4
+  length
 
 # Calculate size of bundle.
 oscSizeOfBundle = (bundle, dict)->
@@ -221,7 +245,7 @@ class Message
 
           @typeTag += type.code
 
-          # Types without arguments data have no sizeOf method
+          # Types without argument data have no sizeOf method
           # and return their values on read.
           if type.sizeOf then value.value else type.read()
         else
@@ -271,65 +295,112 @@ class Bundle
 class OscBufferReader
   constructor: (buffer, pos=0)->
     @buffer = buffer
+    if buffer instanceof ArrayBuffer
+      @view = new DataView(@buffer)
     @pos = pos
 
   # bytes left?
-  isEnd: -> @buffer.length is 0 or @pos is @buffer.length
+  isEnd: ->
+    if @view
+      @buffer.byteLength is 0 or @pos is @buffer.byteLength
+    else
+      @buffer.length is 0 or @pos is @buffer.length
 
   # Is it a bundle?
   isBundle: ->
-    @toString("utf8", @pos, @pos + 7) is "#bundle"
+    @toString("ascii", @pos, @pos + 7) is "#bundle"
 
   # Has compressed address string
   isCompressed: ->
     # return true if we've a dict and the next 4 bytes are '/\0\0\0\0'
-    @dict and @buffer.readInt32BE(@pos) is 0x2f000000
+    @dict and @readInt32(@pos, false) is 0x2f000000
 
-  # Convenience method which delegates to the toString
-  # method of the underlying Buffer.
-  toString: -> @buffer.toString.apply(@buffer, arguments)
+  toString: (encoding, start, end)->
+    if @view
+      start = start ? 0
+      end = end ? @buffer.byteLength
+      str = ""
+      while start < end
+        charCode = @view.getInt8(start++)
+        str += String.fromCharCode(charCode & 0x7F)
+      str
+    else
+      @buffer.toString.apply(@buffer, arguments)
 
   # Read a blob from the underlying buffer.
-  readBlob: ->
+  readBlob: (move=true)->
     # get size of blob
     size = @readInt32()
-    # create new buffer
-    buf = new Buffer(size)
-    # copy content to the new buffer
-    @buffer.copy(buf, 0, @pos, @pos + size)
 
-    # total bits must be a multiple of 32bits
-    pad = oscPadding(4 + size)
-    size += pad if pad < 4
+    if @view
+      i = 0
+      view = new DataView(new ArrayBuffer(size))
+      # copy buffer
+      while i < size
+        view.setInt8(i, @view.getInt8(@pos+i))
+        i++
+      buf = view.buffer
+    else
+      # create new buffer
+      buf = new Buffer(size)
+      # copy content to the new buffer
+      @buffer.copy(buf, 0, @pos, @pos + size)
 
-    @pos += size
+    if move
+      # total bits must be a multiple of 32bits
+      pad = oscPadding(4 + size)
+      size += pad if pad < 4
+
+      @pos += size
     buf
 
   # Read a string from the underlying buffer
-  readString: ->
+  readString: (encoding="ascii", move=true)->
     throw new Error("No data left") if @isEnd()
 
     length = 4
     nullSeen = false
 
-    while (pos = @pos + length - 1) < @buffer.length
-      if @buffer[pos] is 0
-        nullSeen = true
-        break
-      length += 4
+    if @view
+      string = ""
 
-    if length is 0 or nullSeen is false
-      throw new Error("No string data found")
+      while (pos = @pos + length - 1) < @buffer.byteLength
+        if @view.getInt8(pos) is 0
+          nullSeen = true
+          break
+        length += 4
 
-    # length of string without null-bytes
-    stringLength = length - 4
-    while stringLength < length
-      if @buffer[@pos + stringLength] is 0
-        break
-      stringLength++
+      if length is 0 or nullSeen is false
+        throw new Error("No string data found")
 
-    string = @toString("utf8", @pos, @pos + stringLength)
-    @pos += length
+      # length of string without null-bytes
+      stringLength = length - 4
+      while stringLength < length
+        if @view.getInt8(@pos + stringLength) is 0
+          break
+        stringLength++
+
+      string = @toString(encoding, @pos, @pos + stringLength)
+    else
+      while (pos = @pos + length - 1) < @buffer.length
+        if @buffer[pos] is 0
+          nullSeen = true
+          break
+        length += 4
+
+      if length is 0 or nullSeen is false
+        throw new Error("No string data found")
+
+      # length of string without null-bytes
+      stringLength = length - 4
+      while stringLength < length
+        if @buffer[@pos + stringLength] is 0
+          break
+        stringLength++
+
+      string = @toString(encoding, @pos, @pos + stringLength)
+
+    @pos += length if move
     string
 
   # read timetag and convert it to Date
@@ -337,44 +408,89 @@ class OscBufferReader
 
 # Generate reader methods 
 # for Int32, UInt32, Float, Double.
-for type, size of TYPE_BYTE_SIZE
-  do(type, size)->
-    from = "read#{type}"
-    to = "#{from}BE"
-    OscBufferReader::[from] = (noAssert=false)->
-      value = @buffer[to](@pos, noAssert)
-      @pos += size
+for type, desc of NUMBERS
+  do(type, desc)->
+    OscBufferReader::["read#{type}"] = (move=true)->
+      if @view
+        value = @view[desc.dataViewReader](@pos, false)
+      else
+        value = @buffer[desc.bufferReader](@pos)
+      @pos += desc.size if move
       value
 
 # Buffer write-access layer
 class OscBufferWriter
-  constructor: (size)->
-    @buffer = new Buffer(size)
-    @pos = 0
+  constructor: (buffer, pos=0)->
+    @buffer = buffer
+    if buffer instanceof ArrayBuffer
+      @view = new DataView(buffer)
+    @pos = pos
 
   # Write a string to the underlying buffer.
-  writeString: (string)->
-    length = Buffer.byteLength(string, "utf8")
-    @buffer.write(string, @pos, length)
-    @pos += length
+  writeString: (string, encoding="ascii")->
+    if @view
+      if encoding isnt "ascii"
+        throw new Error("OscBufferWriter::writeString only supports ASCII encoding for ArrayBuffer")
 
-    pad = oscPadding(length)
-    @buffer.fill(0, @pos, @pos + pad)
-    @pos += pad
+      l = string.length
+      i = 0
+      while i < l
+        char = string.charCodeAt(i++)
+        @view.setInt8(@pos++, char & 0x7F)
+      pad = oscPadding(l)
+      i = 0
+      while i < pad
+        @view.setInt8(@pos++, 0)
+        i++
+    else
+      length = Buffer.byteLength(string, encoding)
+      @buffer.write(string, @pos, length)
+      @pos += length
+
+      pad = oscPadding(length)
+      @buffer.fill(0, @pos, @pos + pad)
+      @pos += pad
 
   # Write a blob to the underlying buffer.
   writeBlob: (buffer)->
-    if typeof buffer is 'string'
-      buffer = new Buffer(buffer)
+    if @view
+      # if buffer is a node buffer
+      if nodeBuffer and Buffer.isBuffer(buffer)
+        l = buffer.length
+        @writeInt32(l)
+        i = 0
+        while i < l
+          @view.setInt8(@pos + i, buffer[i])
+          i++
+        @pos += l
+      # it's an ArrayBuffer
+      else
+        l = buffer.byteLength
+        view = new DataView(buffer)
+        @writeInt32(l)
+        i = 0
+        while i < l
+          @view.setInt8(@pos + i, view.getInt8(i))
+          i++
+        @pos += l
 
-    @writeInt32(buffer.length)
-    buffer.copy(@buffer, @pos)
+      # add padding
+      pad = oscPadding(4 + l)
+      if pad and pad < 4
+        i = 0
+        while i < pad
+          @view.setInt8(@pos + i, 0)
+          i++
+        @pos += pad
+    else
+      @writeInt32(buffer.length)
+      buffer.copy(@buffer, @pos)
 
-    pad = oscPadding(4 + buffer.length)
-    @pos += buffer.length
-    if pad and pad < 4
-      @buffer.fill(0, @pos, @pos + pad)
-      @pos += pad
+      pad = oscPadding(4 + buffer.length)
+      @pos += buffer.length
+      if pad and pad < 4
+        @buffer.fill(0, @pos, @pos + pad)
+        @pos += pad
 
   # Write a timetag to the underlying buffer.
   writeTimetag: (tag)->
@@ -383,13 +499,14 @@ class OscBufferWriter
 
 # Generate writer methods 
 # for Int32, UInt32, Float, Double.
-for type, size of TYPE_BYTE_SIZE
-  do(type, size)->
-    from = "write#{type}"
-    to = "#{from}BE"
-    OscBufferWriter::[from] = (value, noAssert=false)->
-      value = @buffer[to](value, @pos, noAssert)
-      @pos += size
+for type, desc of NUMBERS
+  do(type, desc)->
+    OscBufferWriter::["write#{type}"] = (value)->
+      if @view
+        value = @view[desc.dataViewWriter](@pos, value, false)
+      else
+        value = @buffer[desc.bufferWriter](value, @pos)
+      @pos += desc.size
       value
 
 # The OSC packet parser.
@@ -502,7 +619,12 @@ class OscPacketGenerator extends OscBufferWriter
       @message = messageOrBundle
       size = oscSizeOfMessage(@message, @dict)
 
-    super(size)
+    if nodeBuffer
+      buffer = new Buffer(size)
+    else
+      buffer= new DataView(new ArrayBuffer(size))
+
+    super(buffer)
 
   generateMessage: (msg)->
     # compress if possible
