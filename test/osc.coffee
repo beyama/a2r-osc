@@ -1,6 +1,9 @@
 osc = require "../"
 should = require "should"
 
+Message = osc.Message
+Bundle  = osc.Bundle
+
 length = (b)->
   if b instanceof ArrayBuffer then b.byteLength else b.length
 
@@ -121,7 +124,97 @@ for name, desc of osc.NUMBERS
       @pos++ if move
       value
 
+describe "Message", ->
+  describe "constructor", ->
+
+    it "should construct message from address and one argument", ->
+      msg = new Message("/test", 12)
+      msg.address.should.be.equal "/test"
+      msg.typeTag.should.be.equal "f"
+      msg.arguments.should.have.length 1
+      msg.arguments.should.include 12
+
+    it "should construct message from address and array of arguments", ->
+      msg = new Message("/test", ["a2r", 12])
+      msg.address.should.be.equal "/test"
+      msg.typeTag.should.be.equal "sf"
+      msg.arguments.should.have.length 2
+      msg.arguments[0].should.be.equal "a2r"
+      msg.arguments[1].should.be.equal 12
+
+    it "should construct message from address, typetag and array", ->
+      msg = new Message("/test", "si", ["a2r", 12])
+      msg.address.should.be.equal "/test"
+      msg.typeTag.should.be.equal "si"
+      msg.arguments.should.have.length 2
+      msg.arguments[0].should.be.equal "a2r"
+      msg.arguments[1].should.be.equal 12
+
+    it "should construct message from address and object", ->
+      msg = new Message("/test", { type: "i", value: 23 })
+      msg.address.should.be.equal "/test"
+      msg.typeTag.should.be.equal "i"
+      msg.arguments.should.have.length 1
+      msg.arguments.should.include 23
+
+    it "should throw an error if a type isn't supported", ->
+       (-> new Message("/test", { type: "y", value: 23 }) ).should.throw()
+       (-> new Message("/test", "y", 23) ).should.throw()
+
+  describe ".add", ->
+    msg = null
+
+    beforeEach -> msg = new Message("/test")
+
+    it "should return itself", ->
+      msg.add("foo").should.be.equal msg
+
+    describe "without type code", ->
+
+      it "should determine typecode for Boolean true", ->
+        msg.add(true)
+        msg.typeTag.should.be.equal "T"
+
+      it "should determine typecode for Boolean false", ->
+        msg.add(false)
+        msg.typeTag.should.be.equal "F"
+
+      it "should determine typecode for null", ->
+        msg.add(null)
+        msg.typeTag.should.be.equal "N"
+
+      it "should determine typecode for Number", ->
+        msg.add(12)
+        msg.typeTag.should.be.equal "f"
+
+      it "should determine typecode for Date", ->
+        msg.add(new Date)
+        msg.typeTag.should.be.equal "t"
+
+      it "should determine typecode for Impulse", ->
+        msg.add(osc.Impulse)
+        msg.typeTag.should.be.equal "I"
+
+      it "should determine typecode for ArrayBuffer", ->
+        msg.add(new ArrayBuffer(4))
+        msg.typeTag.should.be.equal "b"
+
+      if nodeBuffer
+        it "should determine typecode for Buffer", ->
+          msg.add(new Buffer(4))
+          msg.typeTag.should.be.equal "b"
+
+      it "should throw an error for unsupported types", ->
+        (-> msg.add({}) ).should.throw()
+
+    describe "with type code", ->
+
+      it "should cast value", ->
+        msg.add("i", 12.4)
+        msg.arguments.should.include 12
+
 describe "AbstractOscPacketGenerator", ->
+
   describe "generate a message", ->
     it "should write address, type tag and arguments", ->
       message = new osc.Message("/foo/bar", "i", 12)

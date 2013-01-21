@@ -80,7 +80,9 @@ OSC_TYPES =
     name:   "time"
     read:   (reader)-> reader.readTimetag()
     write:  (writer, value)-> writer.writeTimetag(value)
-    cast:   toNTP
+    cast:   (value)->
+      return value if value instanceof Date
+      new Date(value)
     sizeOf: -> 8
   T:
     name: "true"
@@ -221,40 +223,62 @@ oscSizeOf = (value, code)->
 # Class for representing a message.
 class Message
   constructor: (address, typeTag, args)->
-    @address = address
+    @address   = address
+    @arguments = []
 
     if typeTag and not args?
       args    = typeTag
       typeTag = null
 
+    return if args is undefined
+
     args = [args] unless Array.isArray(args)
 
-    # if type tag is given
     if typeTag
-      @typeTag = typeTag
-      @arguments = args
-    # else generate type tag
+      # check for consistent lengths of arguments and type tag
+      if args.length isnt typeTag.length
+        throw new Error("Arguments length doesn't match typetag length")
+
+      for arg, i in args
+        @add(typeTag.charAt(i), arg)
     else
-      @typeTag = ""
-      @arguments = for value in args
+      for value in args
+        code = null
+
         if typeof value is 'object' and value?.type?
           code = value.type
           type = OSC_TYPES[code] || OSC_TYPES_BY_NAME[code]
-          unless type
-            throw new Error("Type `#{code}` isn't supported")
-
-          @typeTag += type.code
+          throw new Error("Unsupported type `#{code}`") unless type
 
           # Types without argument data have no sizeOf method
           # and return their values on read.
-          if type.sizeOf then value.value else type.read()
-        else
-          @typeTag += oscTypeCodeOf(value)
-          value
+          value = if type.sizeOf then value.value else type.read()
 
-    # check for consistent lengths of arguments and type tag
-    if @arguments.length isnt @typeTag.length
-      throw new Error("Arguments doesn't match typetag")
+        if code
+          @add(code, value)
+        else
+          @add(value)
+
+  add: (code, value)->
+    if value is undefined
+      value = code
+      code  = null
+
+    if code
+      type = OSC_TYPES[code] || OSC_TYPES_BY_NAME[code]
+      throw new Error("Unsupported type `#{code}`") unless type
+      value = type.cast(value) if type.cast
+    else
+      code = oscTypeCodeOf(value)
+      type = OSC_TYPES[code]
+
+    @arguments.push(value)
+
+    if @typeTag
+      @typeTag += code
+    else
+      @typeTag = code
+    @
 
   # Convenience method, creates an instance of OscPacketGenerator,
   # generates packet and returns the buffer.
@@ -360,7 +384,6 @@ class AbstractOscPacketGenerator
         throw new Error("Type `#{code}` isn't supported")
 
       if type.write
-        value = type.cast(value) if type.cast
         type.write(@, value)
 
   generateBundle: (bundle)->
@@ -379,7 +402,8 @@ class AbstractOscPacketGenerator
     null
 
   # Write a timetag to the underlying buffer.
-  writeTimetag: (tag)->
+  writeTimetag: (date)->
+    tag = toNTP(date)
     @writeUInt32(tag[0])
     @writeUInt32(tag[1])
 
