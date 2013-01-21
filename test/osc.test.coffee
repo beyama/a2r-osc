@@ -239,8 +239,8 @@ describe "AbstractOscPacketGenerator", ->
   describe "generate a bundle", ->
     it "should write '#bundle', timetag and messages", ->
       bundle = new osc.Bundle(new Date)
-        .message("/foo", osc.Impulse)
-        .message("/bar", osc.Impulse)
+        .add("/foo", osc.Impulse)
+        .add("/bar", osc.Impulse)
 
       mock = new MockOscPacketGenerator(bundle)
       array = mock.generate()

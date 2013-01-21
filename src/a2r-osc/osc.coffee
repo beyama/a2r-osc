@@ -1,3 +1,11 @@
+# a2r-osc 0.0.1
+# http://github.com/beyama/a2r-osc
+# (c) 2013 Alexander Jentz, beyama.de
+# a2r-osc may be freely distributed under the MIT license.
+
+# Export the a2r-osc functions and classes.
+# If we're in the browser, add a2r.osc as a
+# global object.
 if typeof module is "undefined"
   window.a2r ||= {}
   exports = window.a2r.osc = {}
@@ -5,22 +13,27 @@ else
   exports = module.exports
 
 do (exports)->
-  # Node.js or Browser?
+  # Do we have a Node.js Buffer or are we in a browser?
   nodeBuffer = typeof Buffer is 'function'
   
+  # Convert a value to a number and throw an error if value
+  # is Not-a-Number.
   toNumber = (val)->
     val = Number(val)
     throw new Error("Value isn't a number") if val is NaN
     val
   
+  # Convert a value to a number and round the result.
   toInteger = (val)->
     val = toNumber(val)
     Math.round(val)
   
   # Convert NTP Timestamp to Date and vice versa
+  #
   # http://commons.apache.org/net/api-3.2/src-html/org/apache/commons/net/ntp/TimeStamp.html
   SECONDS_FROM_1900_to_1970 = 2208988800
   
+  # Get a Date object for seconds and fraction
   fromNTP = (seconds, fraction)->
     # immediately
     return new Date if seconds is 0 and fraction is 1
@@ -32,7 +45,9 @@ do (exports)->
     date.ntpFraction = fraction
     date
   
+  # Get an array with seconds and fraction from JavaScript Date-object.
   toNTP = (date)->
+    # special case in OSC, 1 means process immediately
     return [0, 1] if date is 1
     return date if Array.isArray(date)
   
@@ -196,10 +211,10 @@ do (exports)->
       size = oscSizeOfString(msg.address)
     # sizeof typeTag
     if addressId
-      # typeTag + ';' and 'i' for addressId
+      # typeTag + ',' and 'i' for addressId
       tl = msg.typeTag.length + 2
     else
-      # typeTag + ';'
+      # typeTag + ','
       tl = msg.typeTag.length + 1
     size += tl + oscPadding(tl)
   
@@ -266,6 +281,7 @@ do (exports)->
           else
             @add(value)
   
+    # Add a value to the arguments list
     add: (code, value)->
       if value is undefined
         value = code
@@ -287,8 +303,8 @@ do (exports)->
         @typeTag = code
       @
   
-    # Convenience method, creates an instance of OscPacketGenerator,
-    # generates packet and returns the buffer.
+    # Convenience method, creates an OSC packet generator,
+    # generates a packet and returns the buffer.
     toBuffer: (dict)->
       if nodeBuffer
         new OscBufferPacketGenerator(@, dict).generate()
@@ -315,28 +331,27 @@ do (exports)->
         @timetag = new Date
         elements = timetag
   
+      @elements = []
       if elements
-        elements = [elements] unless Array.isArray(elements)
-        @elements = elements
-      else
-        @elements = []
-  
-      for elem in @elements when not elem instanceof Message
-        throw new Error("A bundle element must be an instance of Message")
-      null # don't let coffee generate an useless array
+        if Array.isArray(elements)
+          @addElement(elem) for elem in elements
+        else
+          @addElement(elem)
   
     # Add a message to elements list and return the message.
     addElement: (address, typeTag, args)->
       if address instanceof Message
         @elements.push address
         address
-      else
+      else if typeof address is "string"
         msg = new Message(address, typeTag, args)
         @elements.push msg
         msg
+      else
+        throw new Error("A bundle element must be an instance of Message")
   
     # Add a message to elements list and returns self (for chaining).
-    message: (address, typeTag, args)->
+    add: (address, typeTag, args)->
       @addElement(address, typeTag, args)
       @
   
@@ -348,6 +363,7 @@ do (exports)->
       else
         new OscArrayBufferPacketGenerator(@, dict).generate()
   
+    # Returns true if this bundle is equal to another bundle otherwise returns false.
     equal: (other)->
       return false unless other instanceof Bundle
       return false if other.timetag isnt @timetag
@@ -356,7 +372,7 @@ do (exports)->
         return false
       true
   
-  # The abstract osc packet generator
+  # The abstract OSC packet generator
   class AbstractOscPacketGenerator
     constructor: (messageOrBundle, dict)->
       @dict = dict
@@ -368,7 +384,7 @@ do (exports)->
         @message = messageOrBundle
         @size = oscSizeOfMessage(@message, @dict)
   
-    generateMessage: (msg)->
+    _generateMessage: (msg)->
       # compress if possible
       if @dict and (addressId = @dict[msg.address])
         @writeUInt32(0x2f000000)
@@ -393,7 +409,7 @@ do (exports)->
         if type.write
           type.write(@, value)
   
-    generateBundle: (bundle)->
+    _generateBundle: (bundle)->
       # bundle-id
       @writeString("#bundle")
       # timetag
@@ -405,7 +421,7 @@ do (exports)->
       # generate elements
       for elem in bundle.elements
         @writeInt32(oscSizeOfMessage(elem, @dict))
-        @generateMessage(elem)
+        @_generateMessage(elem)
       null
   
     # Write a timetag to the underlying buffer.
@@ -418,9 +434,9 @@ do (exports)->
     # object
     generate: ->
       if @bundle
-        @generateBundle(@bundle)
+        @_generateBundle(@bundle)
       else
-        @generateMessage(@message)
+        @_generateMessage(@message)
       @buffer
   
     writeString: (string, encoding="ascii")->
@@ -803,7 +819,10 @@ do (exports)->
 
 #end_only_node
   
-  # Parse OSC message/bundle from buffer
+  # Takes a Node.js Buffer- or an ArrayBuffer-object and returns either a osc.Message or oscBundle, 
+  # or throws an Error if the buffer isn't well-formed.
+  # 
+  # The optional dictionary is for compressed address string support (see below).
   fromBuffer = (buffer, pos, dict)->
     if nodeBuffer and Buffer.isBuffer(buffer)
       new OscBufferPacketParser(buffer, pos, dict).parse()

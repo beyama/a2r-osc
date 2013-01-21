@@ -1,20 +1,28 @@
 {
   "name": "a2r-osc"
   , "version": "0.0.1"
-  , "author": "Alexander Jentz"
   , "description": "An OSC implementation for node.js and the browser"
   , "keywords": ["a2r", "addicted2random", "osc"]
-  , "dependencies": {}
-  , "devDependencies": {
-    "mocha": "*"
-    , "should": "*"
-    , "expect.js": "*"
-    , "coffee-script": "*"
-    , "uglify-js": "*"
-  }
+  , "author": "Alexander Jentz"
+  , "maintainers": [{
+      "name": "Alexander Jentz"
+      , "email": "me@beyama.de"
+      , "web": "http://beyama.de/"
+  }]
+  , "licenses": [{
+      "type": "MIT"
+      , "url": "https://github.com/beyama/a2r-osc/raw/master/LICENSE"
+  }]
   , "repository": {
     "type": "git"
     , "url": "https://github.com/beyama/a2r-osc.git"
+  }
+  , "dependencies": {}
+  , "devDependencies": {
+    "mocha": "*"
+    , "expect.js": "*"
+    , "coffee-script": "*"
+    , "uglify-js": "*"
   }
   , "scripts": {
     "prepublish": "cake build"
