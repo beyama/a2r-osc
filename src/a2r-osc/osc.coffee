@@ -131,7 +131,7 @@ NUMBERS =
 
 oscPadding = (len)-> (4 - len % 4)
 
-# Impules, singleton marker object
+# Impulse, singleton marker object
 Impulse = new Object
 
 # Get type code for supported JavaScript types.
@@ -442,11 +442,11 @@ class OscArrayBufferPacketGenerator extends AbstractOscPacketGenerator
     # it's an ArrayBuffer
     else
       l = buffer.byteLength
-      view = new DataView(buffer)
+      array = new Int8Array(buffer)
       @writeInt32(l)
       i = 0
       while i < l
-        @view.setInt8(@pos + i, view.getInt8(i))
+        @view.setInt8(@pos + i, array[i])
         i++
       @pos += l
 
@@ -490,10 +490,11 @@ class OscBufferPacketGenerator extends AbstractOscPacketGenerator
     # copy content from an ArrayBuffer to the underlying buffer
     if buffer instanceof ArrayBuffer
       length = buffer.byteLength
-      view = new Int8Array(buffer)
+      @writeInt32(length)
+      array = new Int8Array(buffer)
       i = 0
       while i < length
-        @buffer[@pos + i] = view.get(i)
+        @buffer[@pos + i] = array[i]
         i++
     # copy content from a node buffer to the underlying buffer
     else
@@ -649,10 +650,10 @@ class OscArrayBufferPacketParser extends AbstractOscPacketParser
     size = @readInt32()
 
     i = 0
-    view = new DataView(new ArrayBuffer(size))
+    array = new Int8Array(new ArrayBuffer(size))
     # copy buffer
     while i < size
-      view.setInt8(i, @view.getInt8(@pos+i))
+      array[i] = @view.getInt8(@pos+i)
       i++
 
     if move
@@ -661,7 +662,7 @@ class OscArrayBufferPacketParser extends AbstractOscPacketParser
       size += pad if pad < 4
 
       @pos += size
-    view.buffer
+    array.buffer
 
   # Read a string from the underlying buffer
   readString: (encoding="ascii", move=true)->

@@ -25,15 +25,69 @@ TEST_MESSAGES = [
   {
     msg: new osc.Message("/node/color", "r", Number("0xffaabb"))
     length: 20
+  },
+  {
+    msg: new osc.Message("/node/char", "c", "a")
+    length: 20
+  },
+  {
+    msg: new osc.Message("/node/x", "d", 25.444)
+    length: 20
+  },
+  {
+    msg: new osc.Message("/node/setDate", new Date)
+    length: 28
+  },
+  {
+    msg: new osc.Message("/node/noPayload", [null, false, true, osc.Impulse])
+    length: 24
   }
 ]
+
+arrayBuffer = new ArrayBuffer(10)
+int8array   = new Int8Array(arrayBuffer)
+for i in [0..9]
+  int8array[i] = Math.round(Math.random() * 255)
+
+TEST_MESSAGES.push(msg: new osc.Message("/foo/data", arrayBuffer), length: 32)
+
+createInt8Array = (buffer)->
+  if nodeBuffer and Buffer.isBuffer(buffer)
+    array = new Int8Array(new ArrayBuffer(buffer.length))
+    i = 0
+    while i < buffer.length
+      array[i] = buffer[i]
+      i++
+    array
+  else
+    new Int8Array(buffer)
+
+bufferEqual = (b1, b2)->
+  a1 = createInt8Array(b1)
+  a2 = createInt8Array(b2)
+
+  a1.byteLength.should.be.equal a2.byteLength
+
+  i = 0
+  while i < a1.length
+    a1[i].should.be.equal a2[i]
+    i++
+
+isBuffer = (o)->
+  if nodeBuffer and Buffer.isBuffer(o)
+    return true
+  if o instanceof ArrayBuffer
+    return true
+  false
 
 messageEqual = (msg1, msg2)->
   msg1.address.should.be.equal msg2.address
   msg1.typeTag.should.be.equal msg2.typeTag
   msg1.arguments.should.have.length msg2.arguments.length
   for arg, i in msg1.arguments
-    if arg
+    if isBuffer(arg)
+      bufferEqual(arg, msg2.arguments[i])
+    else if arg
       arg.should.be.equal(msg2.arguments[i])
     else
       should.ok(arg is msg2.arguments[i])
