@@ -327,7 +327,7 @@ do (exports)->
       @address   = address
       @arguments = []
   
-      if typeTag and not args?
+      if typeTag isnt undefined and args is undefined
         args    = typeTag
         typeTag = null
   

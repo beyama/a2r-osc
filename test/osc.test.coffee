@@ -240,6 +240,20 @@ describe "Message", ->
       expect(msg.arguments).to.have.length 1
       expect(msg.arguments).to.contain 12
 
+    it "should construct message from address and 0 as first message argument", ->
+      msg = new Message("/test", 0)
+      expect(msg.address).to.be "/test"
+      expect(msg.typeTag).to.be "f"
+      expect(msg.arguments).to.have.length 1
+      expect(msg.arguments).to.contain 0
+
+    it "should construct message from address and null as firstmessage argument", ->
+      msg = new Message("/test", null)
+      expect(msg.address).to.be "/test"
+      expect(msg.typeTag).to.be "N"
+      expect(msg.arguments).to.have.length 1
+      expect(msg.arguments).to.contain null
+
     it "should construct message from address and array of arguments", ->
       msg = new Message("/test", ["a2r", 12])
       expect(msg.address).to.be "/test"

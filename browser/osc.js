@@ -423,7 +423,7 @@
         }
         this.address = address;
         this["arguments"] = [];
-        if (typeTag && !(args != null)) {
+        if (typeTag !== void 0 && args === void 0) {
           args = typeTag;
           typeTag = null;
         }
