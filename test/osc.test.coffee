@@ -267,6 +267,16 @@ describe "Message", ->
        expect(-> new Message("/test", { type: "y", value: 23 })).to.throwError()
        expect(-> new Message("/test", "y", 23)).to.throwError()
 
+  describe ".clone", ->
+
+    it "should create a copy of the message", ->
+      msg = new Message("/test", ["hello", 12])
+      msg2 = msg.clone()
+
+      expect(msg).not.to.be msg2
+      expect(msg.arguments).not.to.be msg2.arguments
+      expect(msg.equal(msg2)).to.be true
+
   describe ".add", ->
     msg = null
 
@@ -338,6 +348,91 @@ describe "Message", ->
       expect(msg.isPattern()).to.be false
       delete msg._isPattern
       expect(msg.isPattern()).to.be true
+
+describe "Bundle", ->
+
+  describe "constructor", ->
+
+    it "should construct an empty bundle with timetag is time now if called without arguments", ->
+      bundle = new Bundle
+      expect(bundle.timetag).to.be.a Date
+      expect(bundle.elements).to.be.empty()
+
+    it "should construct an empty bundle with timetag is time now if timetag is 1", ->
+      bundle = new Bundle(1)
+      expect(bundle.timetag).to.be.a Date
+
+    it "should construct an bundle with timetag is given date and elements contains given element", ->
+      date = new Date
+      msg  = new Message("/test", osc.Impulse)
+      bundle = new Bundle(date, msg)
+
+      expect(bundle.timetag).to.be date
+      expect(bundle.elements).to.have.length 1
+      expect(bundle.elements).to.contain msg
+
+    it "should construct an bundle with timetag is given date and elements contains given elements", ->
+      date = new Date
+
+      msgs = for i in [0..9]
+        new Message("/test/#{i}", osc.Impulse)
+
+      bundle = new Bundle(date, msgs)
+
+      expect(bundle.timetag).to.be date
+      expect(bundle.elements).to.have.length 10
+
+      for msg, i in msgs
+        expect(bundle.elements[i]).to.be msg
+
+  describe ".addElement", ->
+
+    it "should add a message to elements and return the message", ->
+      bundle = new Bundle
+      message = new Message("/test", osc.Impulse)
+
+      expect(bundle.addElement(message)).to.be message
+      expect(bundle.elements).to.contain message
+      expect(bundle.elements).to.have.length 1
+
+    it "should initialize and add a message if called with arguments for message constructor", ->
+      bundle = new Bundle
+      expect(bundle.addElement("/test", 12)).to.be.a Message
+      expect(bundle.elements).to.have.length 1
+
+      message = bundle.elements[0]
+      expect(message.address).to.be "/test"
+      expect(message.arguments[0]).to.be 12
+
+  describe ".add", ->
+
+    it "should call addElement and return itself", ->
+      called = false
+      bundle = new Bundle
+
+      bundle.addElement = (addr, tag, args)->
+        expect(addr).to.be "/test"
+        expect(tag).to.be "i"
+        expect(args).to.be 5
+        called = true
+
+      expect(bundle.add("/test", "i", 5)).to.be bundle
+      expect(called).to.be true
+
+  describe ".clone", ->
+
+    it "should create a copy of the bundle", ->
+      bundle = new Bundle(new Date).add("/test", 12.8)
+      bundle2 = bundle.clone()
+
+      expect(bundle).not.to.be bundle2
+      expect(bundle.timetag).not.to.be bundle2.timetag
+      expect(bundle.elements).not.to.be bundle2.elements
+
+      expect(bundle.timetag.valueOf()).to.be bundle2.timetag.valueOf()
+      for elem, i in bundle.elements
+        expect(elem).not.to.be bundle2.elements[i]
+        expect(elem.equal(bundle2.elements[i])).to.be true
 
 describe "AbstractOscPacketGenerator", ->
 

@@ -316,6 +316,14 @@ do (exports)->
   # Class for representing a message.
   class Message
     constructor: (address, typeTag, args)->
+      # copy constructor
+      if address instanceof Message
+        msg = address
+        @address   = msg.address
+        @typeTag   = msg.typeTag
+        @arguments = msg.arguments[..]
+        return
+      # else
       @address   = address
       @arguments = []
   
@@ -351,6 +359,9 @@ do (exports)->
             @add(code, value)
           else
             @add(value)
+
+    # Clone this message
+    clone: -> new Message(@)
 
     isPattern: ->
       return @_isPattern if @_isPattern?
@@ -399,6 +410,16 @@ do (exports)->
   # Class for representing a bundle.
   class Bundle
     constructor: (timetag, elements)->
+      # copy constructor
+      if timetag instanceof Bundle
+        bundle = timetag
+        @timetag = new Date(bundle.timetag.valueOf())
+        @elements = []
+        for elem in bundle.elements
+          @addElement(elem.clone())
+
+        return
+      # else
       if timetag instanceof Date
         @timetag = timetag
       else if timetag is 1
@@ -412,7 +433,10 @@ do (exports)->
         if Array.isArray(elements)
           @addElement(elem) for elem in elements
         else
-          @addElement(elem)
+          @addElement(elements)
+
+    # Clone this bundle
+    clone: -> new Bundle(@)
   
     # Add a message to elements list and return the message.
     addElement: (address, typeTag, args)->

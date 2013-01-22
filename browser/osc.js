@@ -413,7 +413,14 @@
     Message = (function() {
 
       function Message(address, typeTag, args) {
-        var arg, i, value, _i, _j, _len, _len1;
+        var arg, i, msg, value, _i, _j, _len, _len1;
+        if (address instanceof Message) {
+          msg = address;
+          this.address = msg.address;
+          this.typeTag = msg.typeTag;
+          this["arguments"] = msg["arguments"].slice(0);
+          return;
+        }
         this.address = address;
         this["arguments"] = [];
         if (typeTag && !(args != null)) {
@@ -454,6 +461,10 @@
           }
         }
       }
+
+      Message.prototype.clone = function() {
+        return new Message(this);
+      };
 
       Message.prototype.isPattern = function() {
         if (this._isPattern != null) {
@@ -526,7 +537,18 @@
     Bundle = (function() {
 
       function Bundle(timetag, elements) {
-        var elem, _i, _len;
+        var bundle, elem, _i, _j, _len, _len1, _ref;
+        if (timetag instanceof Bundle) {
+          bundle = timetag;
+          this.timetag = new Date(bundle.timetag.valueOf());
+          this.elements = [];
+          _ref = bundle.elements;
+          for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+            elem = _ref[_i];
+            this.addElement(elem.clone());
+          }
+          return;
+        }
         if (timetag instanceof Date) {
           this.timetag = timetag;
         } else if (timetag === 1) {
@@ -538,15 +560,19 @@
         this.elements = [];
         if (elements) {
           if (Array.isArray(elements)) {
-            for (_i = 0, _len = elements.length; _i < _len; _i++) {
-              elem = elements[_i];
+            for (_j = 0, _len1 = elements.length; _j < _len1; _j++) {
+              elem = elements[_j];
               this.addElement(elem);
             }
           } else {
-            this.addElement(elem);
+            this.addElement(elements);
           }
         }
       }
+
+      Bundle.prototype.clone = function() {
+        return new Bundle(this);
+      };
 
       Bundle.prototype.addElement = function(address, typeTag, args) {
         var msg;

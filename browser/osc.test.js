@@ -397,6 +397,16 @@
         }).to.throwError();
       });
     });
+    describe(".clone", function() {
+      return it("should create a copy of the message", function() {
+        var msg, msg2;
+        msg = new Message("/test", ["hello", 12]);
+        msg2 = msg.clone();
+        expect(msg).not.to.be(msg2);
+        expect(msg["arguments"]).not.to.be(msg2["arguments"]);
+        return expect(msg.equal(msg2)).to.be(true);
+      });
+    });
     describe(".add", function() {
       var msg;
       msg = null;
@@ -472,6 +482,105 @@
         expect(msg.isPattern()).to.be(false);
         delete msg._isPattern;
         return expect(msg.isPattern()).to.be(true);
+      });
+    });
+  });
+
+  describe("Bundle", function() {
+    describe("constructor", function() {
+      it("should construct an empty bundle with timetag is time now if called without arguments", function() {
+        var bundle;
+        bundle = new Bundle;
+        expect(bundle.timetag).to.be.a(Date);
+        return expect(bundle.elements).to.be.empty();
+      });
+      it("should construct an empty bundle with timetag is time now if timetag is 1", function() {
+        var bundle;
+        bundle = new Bundle(1);
+        return expect(bundle.timetag).to.be.a(Date);
+      });
+      it("should construct an bundle with timetag is given date and elements contains given element", function() {
+        var bundle, date, msg;
+        date = new Date;
+        msg = new Message("/test", osc.Impulse);
+        bundle = new Bundle(date, msg);
+        expect(bundle.timetag).to.be(date);
+        expect(bundle.elements).to.have.length(1);
+        return expect(bundle.elements).to.contain(msg);
+      });
+      return it("should construct an bundle with timetag is given date and elements contains given elements", function() {
+        var bundle, date, msg, msgs, _j, _len, _results;
+        date = new Date;
+        msgs = (function() {
+          var _j, _results;
+          _results = [];
+          for (i = _j = 0; _j <= 9; i = ++_j) {
+            _results.push(new Message("/test/" + i, osc.Impulse));
+          }
+          return _results;
+        })();
+        bundle = new Bundle(date, msgs);
+        expect(bundle.timetag).to.be(date);
+        expect(bundle.elements).to.have.length(10);
+        _results = [];
+        for (i = _j = 0, _len = msgs.length; _j < _len; i = ++_j) {
+          msg = msgs[i];
+          _results.push(expect(bundle.elements[i]).to.be(msg));
+        }
+        return _results;
+      });
+    });
+    describe(".addElement", function() {
+      it("should add a message to elements and return the message", function() {
+        var bundle, message;
+        bundle = new Bundle;
+        message = new Message("/test", osc.Impulse);
+        expect(bundle.addElement(message)).to.be(message);
+        expect(bundle.elements).to.contain(message);
+        return expect(bundle.elements).to.have.length(1);
+      });
+      return it("should initialize and add a message if called with arguments for message constructor", function() {
+        var bundle, message;
+        bundle = new Bundle;
+        expect(bundle.addElement("/test", 12)).to.be.a(Message);
+        expect(bundle.elements).to.have.length(1);
+        message = bundle.elements[0];
+        expect(message.address).to.be("/test");
+        return expect(message["arguments"][0]).to.be(12);
+      });
+    });
+    describe(".add", function() {
+      return it("should call addElement and return itself", function() {
+        var bundle, called;
+        called = false;
+        bundle = new Bundle;
+        bundle.addElement = function(addr, tag, args) {
+          expect(addr).to.be("/test");
+          expect(tag).to.be("i");
+          expect(args).to.be(5);
+          return called = true;
+        };
+        expect(bundle.add("/test", "i", 5)).to.be(bundle);
+        return expect(called).to.be(true);
+      });
+    });
+    return describe(".clone", function() {
+      return it("should create a copy of the bundle", function() {
+        var bundle, bundle2, elem, _j, _len, _ref2, _results;
+        bundle = new Bundle(new Date).add("/test", 12.8);
+        bundle2 = bundle.clone();
+        expect(bundle).not.to.be(bundle2);
+        expect(bundle.timetag).not.to.be(bundle2.timetag);
+        expect(bundle.elements).not.to.be(bundle2.elements);
+        expect(bundle.timetag.valueOf()).to.be(bundle2.timetag.valueOf());
+        _ref2 = bundle.elements;
+        _results = [];
+        for (i = _j = 0, _len = _ref2.length; _j < _len; i = ++_j) {
+          elem = _ref2[i];
+          expect(elem).not.to.be(bundle2.elements[i]);
+          _results.push(expect(elem.equal(bundle2.elements[i])).to.be(true));
+        }
+        return _results;
       });
     });
   });

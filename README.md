@@ -49,6 +49,10 @@ new osc.Message("/a2r/mima/1/adsr", [50, 12, 8, 4])
 new osc.Message("/a2r/mima/1/adsr", [{ type: "i", value: 50 }, ...])
 ```
 
+#### clone()
+
+This returns a copy of the message without cloning each argument.
+
 #### add(code, [value])
 
 Add a value to the arguments list. If called with two arguments, the first
@@ -93,6 +97,10 @@ Takes a date object and an optional list of bundle elements.
 ``` coffee
 new osc.Bundle(new Date, [new osc.Message("/a2r/endpoint", osc.Impulse)])
 ```
+
+#### clone()
+
+This returns a copy of the bundle and a clone of each message in the elements list.
 
 #### addElement(address, [typeTag], [args])
 
