@@ -200,17 +200,21 @@ do (exports)->
   
   # Calculate size of message
   oscSizeOfMessage = (msg, dict)->
-    addressId = dict?[msg.address]
+    if dict
+      if msg.isPattern()
+        id = dict.getPatternId(msg.address)
+      else
+        id = dict.getAddressId(msg.address)
     
     # sizeof address
-    if addressId
-      # 4 byte for '/' and 4 byte for addressId
+    if id
+      # 4 byte for '/' or '/?' and 4 byte for integer id
       size = 8
     else
       # size of osc string
       size = oscSizeOfString(msg.address)
     # sizeof typeTag
-    if addressId
+    if id
       # typeTag + ',' and 'i' for addressId
       tl = msg.typeTag.length + 2
     else
@@ -241,6 +245,73 @@ do (exports)->
     else
       code = oscTypeCodeOf(value)
       oscSizeOf(value, code)
+
+  # A simple dictionary class to work with compressed
+  # address- / pattern strings.
+  class Dictionary
+    # The constructor takes an optional
+    # id-to-address map and/or an optional
+    # id-to-pattern map.
+    constructor: (addressMap, patternMap)->
+      @idToAddress = {}
+      @addressToId = {}
+      @idToPattern = {}
+      @patternToId = {}
+
+      if addressMap
+        for id, address of addressMap
+          @addAddress(id, address)
+      if patternMap
+        for id, pattern of patternMap
+          @addPattern(id, pattern)
+
+    # Add an address to the dictionary
+    addAddress: (id, address)->
+      @idToAddress[id] = address
+      @addressToId[address] = Number(id)
+
+    # Get address by id
+    getAddress: (id)-> @idToAddress[id]
+
+    # Get id by address
+    getAddressId: (addr)-> @addressToId[addr]
+
+    # Remove an address mapping by
+    # id or address string
+    removeAddress: (idOrAddress)->
+      if typeof idOrAddress is "number"
+        id = idOrAddress
+        address = @idToAddress[id]
+      else
+        address = idOrAddress
+        id = @addressToId[address]
+
+      delete @idToAddress[id]
+      delete @addressToId[address]
+
+    # Add an pattern to the dictionary
+    addPattern: (id, pattern)->
+      @idToPattern[id] = pattern
+      @patternToId[pattern] = Number(id)
+
+    # Get pattern by id
+    getPattern: (id)-> @idToPattern[id]
+
+    # Get id by pattern
+    getPatternId: (pattern)-> @patternToId[pattern]
+
+    # Remove a pattern mapping by
+    # id or pattern
+    removePattern: (idOrPattern)->
+      if typeof idOrPattern is "number"
+        id = idOrPattern
+        pattern = @idToPattern[id]
+      else
+        pattern = idOrPattern
+        id = @patternToId[pattern]
+
+      delete @idToPattern[id]
+      delete @patternToId[pattern]
   
   # Class for representing a message.
   class Message
@@ -280,6 +351,11 @@ do (exports)->
             @add(code, value)
           else
             @add(value)
+
+    isPattern: ->
+      return @_isPattern if @_isPattern?
+
+      @_isPattern = /(?:\*|\?|\[|\{|\/\/)/.test(@address)
   
     # Add a value to the arguments list
     add: (code, value)->
@@ -386,10 +462,20 @@ do (exports)->
   
     _generateMessage: (msg)->
       # compress if possible
-      if @dict and (addressId = @dict[msg.address])
-        @writeUInt32(0x2f000000)
+      if @dict
+        id = if msg.isPattern()
+          @dict.getPatternId(msg.address)
+        else
+          @dict.getAddressId(msg.address)
+
+      if id
+        if msg.isPattern()
+          @writeString("/?")
+        else
+          @writeString("/")
+
         @writeString(",i#{msg.typeTag}")
-        @writeInt32(toInteger(addressId))
+        @writeInt32(toInteger(id))
       else
         @writeString(msg.address)
         @writeString(",#{msg.typeTag}")
@@ -587,22 +673,27 @@ do (exports)->
   
     _parseMessage: (address)->
       if address.charAt(0) isnt '/'
-        throw new Error("A address must start with a '/'")
+        throw new Error("An address must start with a '/'")
        
-      if @dict and (address is "/" or address is "/?") # compressed address
+      if @dict and ((isAddress = address is "/") or address is "/?") # compressed address
         typeTag = @readTypeTag()
         args = @parseArguments(typeTag)
-        # check for int32 as first type
-        if typeTag.charAt(0) isnt 'i'
-          throw new Error("Messages with compressed addresses must have an integer as first arguments type")
-        # slice type tag
-        typeTag = typeTag[1..0]
-        # get address id
-        addressId = args.shift()
-        # resolve address
-        address = @dict[addressId]
-        unless address
-          throw new Error("No address with id `#{addressId}` found")
+        # check for integer as first type
+        if typeTag.charAt(0) is "i"
+          # resolve address or pattern string
+          id = args[0]
+
+          # resolve address or pattern
+          address = if isAddress
+            @dict.getAddress(id)
+          else
+            @dict.getPattern(id)
+
+          if address
+            # slice type tag
+            typeTag = typeTag[1..0]
+            # remove address id
+            args.shift()
       else
         typeTag = @readTypeTag()
         args    = @parseArguments(typeTag)
@@ -829,16 +920,18 @@ do (exports)->
     else
       new OscArrayBufferPacketParser(buffer, pos, dict).parse()
   
-  exports.NUMBERS = NUMBERS
-  exports.toNTP   = toNTP
-  exports.Message = Message
-  exports.Bundle  = Bundle
-  exports.Impulse = Impulse
-  exports.AbstractOscPacketGenerator    = AbstractOscPacketGenerator
-  exports.AbstractOscPacketParser       = AbstractOscPacketParser
+  exports.NUMBERS    = NUMBERS
+  exports.toNTP      = toNTP
+  exports.Message    = Message
+  exports.Bundle     = Bundle
+  exports.Impulse    = Impulse
+  exports.Dictionary = Dictionary
+
+  exports.AbstractOscPacketGenerator = AbstractOscPacketGenerator
+  exports.AbstractOscPacketParser    = AbstractOscPacketParser
 #only_node
-  exports.OscBufferPacketGenerator      = OscBufferPacketGenerator
-  exports.OscBufferPacketParser         = OscBufferPacketParser
+  exports.OscBufferPacketGenerator = OscBufferPacketGenerator
+  exports.OscBufferPacketParser    = OscBufferPacketParser
 #end_only_node
   exports.OscArrayBufferPacketGenerator = OscArrayBufferPacketGenerator
   exports.OscArrayBufferPacketParser    = OscArrayBufferPacketParser

@@ -11,7 +11,7 @@
   }
 
   (function(exports) {
-    var AbstractOscPacketGenerator, AbstractOscPacketParser, Bundle, Impulse, Message, NUMBERS, OSC_TYPES, OSC_TYPES_BY_NAME, OscArrayBufferPacketGenerator, OscArrayBufferPacketParser, SECONDS_FROM_1900_to_1970, code, desc, fromBuffer, fromNTP, name, nodeBuffer, oscPadding, oscSizeOf, oscSizeOfBlob, oscSizeOfBundle, oscSizeOfMessage, oscSizeOfString, oscTypeCodeOf, toInteger, toNTP, toNumber, type, _fn, _fn1, _fn2, _fn3;
+    var AbstractOscPacketGenerator, AbstractOscPacketParser, Bundle, Dictionary, Impulse, Message, NUMBERS, OSC_TYPES, OSC_TYPES_BY_NAME, OscArrayBufferPacketGenerator, OscArrayBufferPacketParser, SECONDS_FROM_1900_to_1970, code, desc, fromBuffer, fromNTP, name, nodeBuffer, oscPadding, oscSizeOf, oscSizeOfBlob, oscSizeOfBundle, oscSizeOfMessage, oscSizeOfString, oscTypeCodeOf, toInteger, toNTP, toNumber, type, _fn, _fn1, _fn2, _fn3;
     nodeBuffer = typeof Buffer === 'function';
     toNumber = function(val) {
       val = Number(val);
@@ -290,14 +290,20 @@
       return size;
     };
     oscSizeOfMessage = function(msg, dict) {
-      var addressId, i, l, size, tl, typeCode, value;
-      addressId = dict != null ? dict[msg.address] : void 0;
-      if (addressId) {
+      var i, id, l, size, tl, typeCode, value;
+      if (dict) {
+        if (msg.isPattern()) {
+          id = dict.getPatternId(msg.address);
+        } else {
+          id = dict.getAddressId(msg.address);
+        }
+      }
+      if (id) {
         size = 8;
       } else {
         size = oscSizeOfString(msg.address);
       }
-      if (addressId) {
+      if (id) {
         tl = msg.typeTag.length + 2;
       } else {
         tl = msg.typeTag.length + 1;
@@ -327,6 +333,83 @@
         return oscSizeOf(value, code);
       }
     };
+    Dictionary = (function() {
+
+      function Dictionary(addressMap, patternMap) {
+        var address, id, pattern;
+        this.idToAddress = {};
+        this.addressToId = {};
+        this.idToPattern = {};
+        this.patternToId = {};
+        if (addressMap) {
+          for (id in addressMap) {
+            address = addressMap[id];
+            this.addAddress(id, address);
+          }
+        }
+        if (patternMap) {
+          for (id in patternMap) {
+            pattern = patternMap[id];
+            this.addPattern(id, pattern);
+          }
+        }
+      }
+
+      Dictionary.prototype.addAddress = function(id, address) {
+        this.idToAddress[id] = address;
+        return this.addressToId[address] = Number(id);
+      };
+
+      Dictionary.prototype.getAddress = function(id) {
+        return this.idToAddress[id];
+      };
+
+      Dictionary.prototype.getAddressId = function(addr) {
+        return this.addressToId[addr];
+      };
+
+      Dictionary.prototype.removeAddress = function(idOrAddress) {
+        var address, id;
+        if (typeof idOrAddress === "number") {
+          id = idOrAddress;
+          address = this.idToAddress[id];
+        } else {
+          address = idOrAddress;
+          id = this.addressToId[address];
+        }
+        delete this.idToAddress[id];
+        return delete this.addressToId[address];
+      };
+
+      Dictionary.prototype.addPattern = function(id, pattern) {
+        this.idToPattern[id] = pattern;
+        return this.patternToId[pattern] = Number(id);
+      };
+
+      Dictionary.prototype.getPattern = function(id) {
+        return this.idToPattern[id];
+      };
+
+      Dictionary.prototype.getPatternId = function(pattern) {
+        return this.patternToId[pattern];
+      };
+
+      Dictionary.prototype.removePattern = function(idOrPattern) {
+        var id, pattern;
+        if (typeof idOrPattern === "number") {
+          id = idOrPattern;
+          pattern = this.idToPattern[id];
+        } else {
+          pattern = idOrPattern;
+          id = this.patternToId[pattern];
+        }
+        delete this.idToPattern[id];
+        return delete this.patternToId[pattern];
+      };
+
+      return Dictionary;
+
+    })();
     Message = (function() {
 
       function Message(address, typeTag, args) {
@@ -371,6 +454,13 @@
           }
         }
       }
+
+      Message.prototype.isPattern = function() {
+        if (this._isPattern != null) {
+          return this._isPattern;
+        }
+        return this._isPattern = /(?:\*|\?|\[|\{|\/\/)/.test(this.address);
+      };
 
       Message.prototype.add = function(code, value) {
         if (value === void 0) {
@@ -436,7 +526,7 @@
     Bundle = (function() {
 
       function Bundle(timetag, elements) {
-        var elem, _i, _len, _ref;
+        var elem, _i, _len;
         if (timetag instanceof Date) {
           this.timetag = timetag;
         } else if (timetag === 1) {
@@ -445,22 +535,17 @@
           this.timetag = new Date;
           elements = timetag;
         }
+        this.elements = [];
         if (elements) {
-          if (!Array.isArray(elements)) {
-            elements = [elements];
-          }
-          this.elements = elements;
-        } else {
-          this.elements = [];
-        }
-        _ref = this.elements;
-        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
-          elem = _ref[_i];
-          if (!elem instanceof Message) {
-            throw new Error("A bundle element must be an instance of Message");
+          if (Array.isArray(elements)) {
+            for (_i = 0, _len = elements.length; _i < _len; _i++) {
+              elem = elements[_i];
+              this.addElement(elem);
+            }
+          } else {
+            this.addElement(elem);
           }
         }
-        null;
       }
 
       Bundle.prototype.addElement = function(address, typeTag, args) {
@@ -468,14 +553,16 @@
         if (address instanceof Message) {
           this.elements.push(address);
           return address;
-        } else {
+        } else if (typeof address === "string") {
           msg = new Message(address, typeTag, args);
           this.elements.push(msg);
           return msg;
+        } else {
+          throw new Error("A bundle element must be an instance of Message");
         }
       };
 
-      Bundle.prototype.message = function(address, typeTag, args) {
+      Bundle.prototype.add = function(address, typeTag, args) {
         this.addElement(address, typeTag, args);
         return this;
       };
@@ -525,12 +612,19 @@
         }
       }
 
-      AbstractOscPacketGenerator.prototype.generateMessage = function(msg) {
-        var addressId, i, l, value, _results;
-        if (this.dict && (addressId = this.dict[msg.address])) {
-          this.writeUInt32(0x2f000000);
+      AbstractOscPacketGenerator.prototype._generateMessage = function(msg) {
+        var i, id, l, value, _results;
+        if (this.dict) {
+          id = msg.isPattern() ? this.dict.getPatternId(msg.address) : this.dict.getAddressId(msg.address);
+        }
+        if (id) {
+          if (msg.isPattern()) {
+            this.writeString("/?");
+          } else {
+            this.writeString("/");
+          }
           this.writeString(",i" + msg.typeTag);
-          this.writeInt32(toInteger(addressId));
+          this.writeInt32(toInteger(id));
         } else {
           this.writeString(msg.address);
           this.writeString("," + msg.typeTag);
@@ -554,7 +648,7 @@
         return _results;
       };
 
-      AbstractOscPacketGenerator.prototype.generateBundle = function(bundle) {
+      AbstractOscPacketGenerator.prototype._generateBundle = function(bundle) {
         var elem, tag, _i, _len, _ref;
         this.writeString("#bundle");
         if (bundle.timetag <= new Date) {
@@ -567,7 +661,7 @@
         for (_i = 0, _len = _ref.length; _i < _len; _i++) {
           elem = _ref[_i];
           this.writeInt32(oscSizeOfMessage(elem, this.dict));
-          this.generateMessage(elem);
+          this._generateMessage(elem);
         }
         return null;
       };
@@ -581,9 +675,9 @@
 
       AbstractOscPacketGenerator.prototype.generate = function() {
         if (this.bundle) {
-          this.generateBundle(this.bundle);
+          this._generateBundle(this.bundle);
         } else {
-          this.generateMessage(this.message);
+          this._generateMessage(this.message);
         }
         return this.buffer;
       };
@@ -717,21 +811,20 @@
       };
 
       AbstractOscPacketParser.prototype._parseMessage = function(address) {
-        var addressId, args, typeTag;
+        var args, id, isAddress, typeTag;
         if (address.charAt(0) !== '/') {
-          throw new Error("A address must start with a '/'");
+          throw new Error("An address must start with a '/'");
         }
-        if (this.dict && (address === "/" || address === "/?")) {
+        if (this.dict && ((isAddress = address === "/") || address === "/?")) {
           typeTag = this.readTypeTag();
           args = this.parseArguments(typeTag);
-          if (typeTag.charAt(0) !== 'i') {
-            throw new Error("Messages with compressed addresses must have an integer as first arguments type");
-          }
-          typeTag = typeTag.slice(1, 1);
-          addressId = args.shift();
-          address = this.dict[addressId];
-          if (!address) {
-            throw new Error("No address with id `" + addressId + "` found");
+          if (typeTag.charAt(0) === "i") {
+            id = args[0];
+            address = isAddress ? this.dict.getAddress(id) : this.dict.getPattern(id);
+            if (address) {
+              typeTag = typeTag.slice(1, 1);
+              args.shift();
+            }
           }
         } else {
           typeTag = this.readTypeTag();
@@ -922,6 +1015,7 @@
     exports.Message = Message;
     exports.Bundle = Bundle;
     exports.Impulse = Impulse;
+    exports.Dictionary = Dictionary;
     exports.AbstractOscPacketGenerator = AbstractOscPacketGenerator;
     exports.AbstractOscPacketParser = AbstractOscPacketParser;
     exports.OscArrayBufferPacketGenerator = OscArrayBufferPacketGenerator;

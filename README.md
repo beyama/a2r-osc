@@ -59,9 +59,10 @@ Returns itself for chaining.
 ##### Examples
 
 ``` coffee
-msg.add("foo")
-msg.add("i", 45)
-msg.add("integer", 83)
+new Message("/a2r/mima")
+  .add("foo")
+  .add("i", 45)
+  .add("integer", 83)
 ```
 
 #### toBuffer([dictionary])
@@ -180,19 +181,56 @@ server = net.createServer (socket)->
 server.listen(5000)
 ```
 
+### osc.Dictionary class
+
+A simple dictionary class to map ids to addresses and patterns and vice versa. This is used for compressed address
+string support (see below). A2R-OSC doesn't provide a way to sync the dictionary between a client and a server,
+this must be done in the client and server implementations.
+
+#### constructors([idToAddressMap], [idToPatternMap])
+
+Takes an optional id-to-address and/or id-to-pattern object.
+
+##### Example
+
+``` coffee
+new osc.Dictionary(1: "/asr", 2: "/a2r/osc")
+```
+
+#### addAddress(id, address) and addPattern(id, pattern)
+
+Add an id-to-address respectively an id-to-pattern mapping to the dictionary.
+
+### getAddress(id) and getPattern(id)
+
+Get an address respectively a pattern by id from the dictionary.
+
+If you like to provide your own implementation of a dictionary than you have to implement these methods. 
+
+### getAddressId(address) and getPatternId(pattern)
+
+Get an id by address respectively pattern from the dictionary.
+
+If you like to provide your own implementation of a dictionary than you have to implement these methods. 
+
+### removeAddress(idOrAddress) and removePattern(idOrPattern)
+
+Remove an address respectively an pattern by id or string from the dictionary.
+
 ## Packed address strings
 
 Compressed address strings are a way to improve the efficiency of the OSC communication protocol.
 
-Basically, both sides of the communication know a (subset) of accessible OSC endpoints and each endpoint
-has a known unique integer id. Instead of sending a whole OSC address or pattern again and again, the sender uses
-the special address '/' for addresses or '/?' for pattern and the integer id of the endpoint as first argument of the message.
+Basically, both sides of an communication have to know a (subset) of accessible OSC endpoints and each endpoint
+has to have a known unique integer id. Instead of sending a whole OSC address or pattern again and again,
+the sender uses the special address '/' for addresses or '/?' for pattern and the integer id of the endpoint or
+the id of the pattern as first argument of the message.
 
 For example: a message with an address like "/session/instrument/adsr" (24 bytes + 4 bytes padding) will be sent
 with address "/" (1 byte + 3 bytes padding) and the integer id (4 bytes) as first argument.
 
-A2R-OSC can handle this internally by providing a dictionary with id-to-address resp. id-to-pattern mapping
-to its 'toBuffer' and 'fromBuffer' methods or to the constructors of the both stream classes.
+A2R-OSC can handle this internally by providing a dictionary (see above) to its 'toBuffer' and 'fromBuffer' methods
+or to the constructors of the both stream classes.
 
 ## How to contribute
 

@@ -7,6 +7,7 @@ else
 
 Message = osc.Message
 Bundle  = osc.Bundle
+Dictionary = osc.Dictionary
 
 length = (b)->
   if b instanceof ArrayBuffer then b.byteLength else b.length
@@ -127,6 +128,108 @@ for name, desc of osc.NUMBERS
       @pos++ if move
       value
 
+describe "Dictionary", ->
+
+  describe "constructor", ->
+
+    it "should take an optional id-to-address map", ->
+      dict = new Dictionary(1: "/a2r", 2: "/a2r/osc")
+      expect(dict.getAddress(2)).to.be "/a2r/osc"
+
+    it "should take an optional id-to-pattern map", ->
+      dict = new Dictionary(null, 1: "//a2r", 2: "/a2r/{osc,tuio}")
+      expect(dict.getPattern(2)).to.be "/a2r/{osc,tuio}"
+
+  describe ".addAddress", ->
+
+    it "should add id-to-address mapping to dictionary", ->
+      dict = new Dictionary
+
+      for id in [0..9]
+        dict.addAddress(id, "/osc/#{id}")
+      for id in [0..9]
+        address = "/osc/#{id}"
+        expect(dict.getAddress(id)).to.be address
+        expect(dict.getAddressId(address)).to.be id
+
+  describe ".removeAddress", ->
+    dict = null
+
+    beforeEach ->
+      dict = new Dictionary
+
+      for id in [0..9]
+        dict.addAddress(id, "/osc/#{id}")
+
+    it "should remove address by id", ->
+      dict.removeAddress(2)
+      expect(dict.getAddress(2)).to.be undefined
+      expect(dict.getAddressId("/osc/2")).to.be undefined
+
+    it "should remove address by address string", ->
+      dict.removeAddress("/osc/2")
+      expect(dict.getAddress(2)).to.be undefined
+      expect(dict.getAddressId("/osc/2")).to.be undefined
+
+  describe ".getAddress", ->
+
+    it "should return address for id or undefined if no mapping exist", ->
+      dict = new Dictionary(1: "/a2r")
+      expect(dict.getAddress(1)).to.be "/a2r"
+      expect(dict.getAddress(2)).to.be undefined
+
+  describe ".getAddressId", ->
+
+    it "should return address id for address or undefined if no mapping exist", ->
+      dict = new Dictionary(1: "/a2r")
+      expect(dict.getAddressId("/a2r")).to.be 1
+      expect(dict.getAddressId("/osc")).to.be undefined
+
+  describe ".addPattern", ->
+
+    it "should add id-to-pattern mapping to dictionary", ->
+      dict = new Dictionary
+
+      for id in [0..9]
+        dict.addPattern(id, "//#{id}")
+      for id in [0..9]
+        pattern = "//#{id}"
+        expect(dict.getPattern(id)).to.be pattern
+        expect(dict.getPatternId(pattern)).to.be id
+
+  describe ".removePattern", ->
+    dict = null
+
+    beforeEach ->
+      dict = new Dictionary
+
+      for id in [0..9]
+        dict.addPattern(id, "//#{id}")
+
+    it "should remove pattern by id", ->
+      dict.removePattern(2)
+      expect(dict.getPattern(2)).to.be undefined
+      expect(dict.getPatternId("//2")).to.be undefined
+
+    it "should remove pattern by pattern string", ->
+      dict.removePattern("//2")
+      expect(dict.getPattern(2)).to.be undefined
+      expect(dict.getPatternId("//2")).to.be undefined
+
+  describe ".getPattern", ->
+
+    it "should return pattern for id or undefined if no mapping exist", ->
+      dict = new Dictionary(null, 1: "//a2r")
+      expect(dict.getPattern(1)).to.be "//a2r"
+      expect(dict.getPattern(2)).to.be undefined
+
+  describe ".getPatternId", ->
+
+    it "should return pattern id for pattern or undefined if no mapping exist", ->
+      dict = new Dictionary(null, 1: "//a2r")
+      expect(dict.getPatternId("//a2r")).to.be 1
+      expect(dict.getPatternId("//osc")).to.be undefined
+
 describe "Message", ->
   describe "constructor", ->
 
@@ -216,6 +319,26 @@ describe "Message", ->
         msg.add("i", 12.4)
         expect(msg.arguments).to.contain 12
 
+  describe ".isPattern", ->
+
+    it "should return true if address looks like a pattern otherwise it should return false", ->
+      expect(new Message("//foo").isPattern()).to.be true
+      expect(new Message("/foo*").isPattern()).to.be true
+      expect(new Message("/foo?").isPattern()).to.be true
+      expect(new Message("/foo[0-9]").isPattern()).to.be true
+      expect(new Message("/foo/bar").isPattern()).to.be false
+
+    it "should cache result of test", ->
+      msg = new Message("/foo")
+      expect(msg._isPattern).to.be undefined
+      msg.isPattern()
+      expect(msg._isPattern).to.be false
+
+      msg.address = "//foo"
+      expect(msg.isPattern()).to.be false
+      delete msg._isPattern
+      expect(msg.isPattern()).to.be true
+
 describe "AbstractOscPacketGenerator", ->
 
   describe "generate a message", ->
@@ -235,6 +358,30 @@ describe "AbstractOscPacketGenerator", ->
       expect(array[3]).to.be "5"
       expect(array[4]).to.be 15.5
       expect(array[5]).to.be "f".charCodeAt(0)
+
+    describe "with compressed address string support", ->
+      dict = null
+
+      beforeEach ->
+        dict = new Dictionary({1: "/foo", 2: "/foo/bar"}, 1: "//foo")
+
+      it "should replace address with '/' and add the id to the arguments", ->
+        message = new osc.Message("/foo/bar", 12.5)
+        mock = new MockOscPacketGenerator(message, dict)
+        array = mock.generate()
+        expect(array[0]).to.be "/"
+        expect(array[1]).to.be ",if"
+        expect(array[2]).to.be 2
+        expect(array[3]).to.be 12.5
+
+      it "should replace pattern with '/?' and add the id to the arguments", ->
+        message = new osc.Message("//foo", 12.5)
+        mock = new MockOscPacketGenerator(message, dict)
+        array = mock.generate()
+        expect(array[0]).to.be "/?"
+        expect(array[1]).to.be ",if"
+        expect(array[2]).to.be 1
+        expect(array[3]).to.be 12.5
 
   describe "generate a bundle", ->
     it "should write '#bundle', timetag and messages", ->
@@ -266,34 +413,63 @@ describe "AbstractOscPacketGenerator", ->
         expect(array[i+1]).to.be ntp[i]
 
 describe "AbstractOscPacketParser", ->
-  it "should return a Bundle if the first string is '#bundle'", ->
-    bundle = new MockOscPacketParser(["#bundle", 0, 1]).parse()
-    expect(bundle).to.be.a osc.Bundle
 
-  it "should read bundled messages", ->
-    data = ["#bundle", 0, 1]
+  describe ".parse", ->
 
-    msg1 = new osc.Message("/foo", 1)
-    msg2 = new osc.Message("/bar", 2)
+    it "should return a Bundle if the first string is '#bundle'", ->
+      bundle = new MockOscPacketParser(["#bundle", 0, 1]).parse()
+      expect(bundle).to.be.a osc.Bundle
 
-    messages = [msg1, msg2]
+    it "should read bundled messages", ->
+      data = ["#bundle", 0, 1]
 
-    for msg in messages
-      data.push(16) # length
-      data.push(msg.address)
-      data.push("," + msg.typeTag)
-      data.push.apply(data, msg.arguments)
+      msg1 = new osc.Message("/foo", 1)
+      msg2 = new osc.Message("/bar", 2)
 
-    bundle = new MockOscPacketParser(data).parse()
-    
-    for elem, i in bundle.elements
-      messageEqual(elem, messages[i])
+      messages = [msg1, msg2]
 
-  it "should return a Message if the first string is an address", ->
-    message = new MockOscPacketParser(["/foo", ",i", 1]).parse()
-    expect(message).to.be.a osc.Message
+      for msg in messages
+        data.push(16) # length
+        data.push(msg.address)
+        data.push("," + msg.typeTag)
+        data.push.apply(data, msg.arguments)
+
+      bundle = new MockOscPacketParser(data).parse()
+      
+      for elem, i in bundle.elements
+        messageEqual(elem, messages[i])
+
+    it "should return a Message if the first string is an address", ->
+      message = new MockOscPacketParser(["/foo", ",i", 1]).parse()
+      expect(message).to.be.a osc.Message
+
+    describe "with compressed address string support", ->
+
+      dict = null
+
+      beforeEach ->
+        dict = new Dictionary({1: "/foo", 2: "/foo/bar"}, 1: "//foo")
+
+      it "should replace address '/' with address from dictionary and should remove id from arguments", ->
+        parser = new MockOscPacketParser(["/", ",if", 2, 12.8], null, dict)
+        message = parser.parse()
+
+        expect(message.address).to.be "/foo/bar"
+        expect(message.typeTag).to.be "f"
+        expect(message.arguments).to.have.length 1
+        expect(message.arguments[0]).to.be 12.8
+
+      it "should replace address '/?' with pattern from dictionary and should remove id from arguments", ->
+        parser = new MockOscPacketParser(["/?", ",if", 1, 12.8], null, dict)
+        message = parser.parse()
+
+        expect(message.address).to.be "//foo"
+        expect(message.typeTag).to.be "f"
+        expect(message.arguments).to.have.length 1
+        expect(message.arguments[0]).to.be 12.8
 
   describe ".readTimetag", ->
+
     it "should read a 64bit NTP time from buffer and convert it to a Date object", ->
       # 14236589681638796952 is equal to the 14th Jan 2005 at 17:58:59 and 12 milliseconds UTC
       hi = 3314714339

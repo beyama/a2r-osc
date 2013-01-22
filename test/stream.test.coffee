@@ -20,12 +20,14 @@ describe "OSC UnpackStream", ->
 
     stream.write "..."
 
-  it "should pass the optional dict to the parser", (done)->
-    dict = { 1: "/a2r", "/a2r": 1 }
+  it "should pass the optional dictionary to the parser", (done)->
+    dict = new osc.Dictionary(1: "/a2r")
     stream = new osc.UnpackStream(dict)
 
     stream.on "message", (msg)->
       msg.address.should.be.equal "/a2r"
+      msg.typeTag.should.be.equal "f"
+      msg.arguments.should.have.length 1
       done()
 
-    stream.write new osc.Message("/a2r", 2.2).toBuffer(dict)
+    stream.write new osc.Message("/").add("i", 1).add(12.5).toBuffer()
