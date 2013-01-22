@@ -24,6 +24,23 @@ sock = udp.createSocket "udp4", (data, rinfo) ->
 sock.bind 5000
 ```
 
+## Supported OSC data types
+
+The following types are supported by A2R-OSC:
+
+* i: 32Bit integer, given floats will be rounded
+* f: 32Bit float, the default assumption for JavaScript numbers
+* s: An ASCII string, the default assumption for JavaScript strings
+* b: A blob, must be either an ArrayBuffer or a Node Buffer
+* d: A 64Bit double, represented as a JavaScript number
+* c: An ASCII character, packed as 32Bit integer, represented as a string with a length of 1
+* r: RGB color, packed as 32Bit integer, represented as JavaScript number
+* t: A NTP timetag, packed as 64Bit NTP timetag, represented as JavaScript date
+* T: A boolean true
+* F: A boolean false
+* N: A null
+* I: An Impulse or bang, represented as osc.Impulse (a singleton marker object)
+
 ## API
 
 ### osc.Message class

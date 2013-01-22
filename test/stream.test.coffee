@@ -43,14 +43,14 @@ describe "OSC UnpackStream", ->
 
     beforeEach -> stream = new osc.UnpackStream()
 
-    it "should emit `close`", (done)->
-      stream.on("close", done)
+    it "should emit `end`", (done)->
+      stream.on("end", done)
       stream.end()
 
     it "should write data before calling end if called with data", (done)->
       called = false
 
-      stream.on "close", ->
+      stream.on "end", ->
         expect(called).to.be true
         done()
 

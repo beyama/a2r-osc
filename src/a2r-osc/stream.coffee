@@ -26,7 +26,7 @@ class UnpackStream extends stream.Stream
 
   end: (buffer, encoding)->
     @write(buffer, encoding) if buffer
-    @emit("close")
+    @emit("end")
 
 class PackStream extends stream.Stream
   constructor: (dict)->
