@@ -3,7 +3,7 @@
 A2R OSC is an Open Sound Control implementation for Node.js and the browser.
 It implements the OSC 1.1 specification and supports compressed address strings [(smc2011)](http://www.acoustics.hut.fi/publications/papers/smc2011-osc/)
 
-This project was created as part of the (Addicted2Random project)[http://www.addicted2random.eu/].
+This project was created as part of the [Addicted2Random project](http://www.addicted2random.eu/).
 
 ## Example
 
