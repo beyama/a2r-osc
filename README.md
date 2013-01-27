@@ -1,7 +1,9 @@
 # Addicted2Random OSC
 
 A2R OSC is an Open Sound Control implementation for Node.js and the browser.
-It implements the OSC 1.1 specification and has support for compressed address strings [(smc2011)](http://www.acoustics.hut.fi/publications/papers/smc2011-osc/)
+It implements the OSC 1.1 specification and supports compressed address strings [(smc2011)](http://www.acoustics.hut.fi/publications/papers/smc2011-osc/)
+
+This project was created as part of the (Addicted2Random project)[http://www.addicted2random.eu/].
 
 ## Example
 
@@ -138,8 +140,8 @@ Same as Bundle::addElement but returns itself for chaining.
 
 ``` coffee
 new osc.Bundle(new Date)
-.add("/a2r/mima/1/a", 23)
-.add("/a2r/mima/2/b", 78.9)
+  .add("/a2r/mima/1/a", 23)
+  .add("/a2r/mima/2/b", 78.9)
 ```
 
 #### toBuffer([dictionary])
@@ -154,18 +156,18 @@ Compare this bundle to another bundle. Returns true if equal otherwise returns f
 
 ### osc.fromBuffer(buffer, [dictionary]) 
 
-Takes a Node.js Buffer- or an ArrayBuffer-object and returns either an osc.Message or oscBundle, 
+Takes a Node.js Buffer- or an ArrayBuffer-object and returns either an osc.Message or osc.Bundle, 
 or throws an error if the buffer isn't well-formed.
 
 The optional dictionary is for compressed address string support (see below).
 
 ### osc.UnpackStream and osc.PackStream (only for Node.js)
 
-The class osc.UnpackStream implement Nodes writable stream interface,
+The class osc.UnpackStream implements Nodes writable stream interface,
 osc.PackStream implements the readable stream interface.
 
-Both stream classes take an optional dictionary as first argument to enable the use
-of compressed strings (see below).
+Both stream classes take an optional dictionary as first argument to handle
+compressed address strings (see below).
 
 #### Example
 
@@ -209,8 +211,7 @@ server.listen(5000)
 ### osc.Dictionary class
 
 A simple dictionary class to map ids to addresses and patterns and vice versa. This is used for compressed address
-string support (see below). A2R-OSC doesn't provide a way to sync the dictionary between a client and a server,
-this must be done in the client and server implementations.
+string support (see below).
 
 #### constructors([idToAddressMap], [idToPatternMap])
 
@@ -246,9 +247,9 @@ Remove an address respectively an pattern by id or string from the dictionary.
 
 Compressed address strings are a way to improve the efficiency of the OSC communication protocol.
 
-Basically, both sides of an communication have to know a (subset) of accessible OSC endpoints and each endpoint
-has to have a known unique integer id. Instead of sending a whole OSC address or pattern again and again,
-the sender uses the special address '/' for addresses or '/?' for pattern and the integer id of the endpoint or
+Basically, both sides of a communication have to know a (sub-) set of accessible OSC endpoints of the counter
+side and each endpoint has to have a known unique integer id. Instead of sending a whole OSC address or pattern again and again,
+the sender uses the special address '/' for addresses or '/?' for patterns and the integer id of the endpoint or
 the id of the pattern as first argument of the message.
 
 For example: a message with an address like "/session/instrument/adsr" (24 bytes + 4 bytes padding) will be sent
@@ -279,4 +280,4 @@ Send a pull request.
 
 Created by [Alexander Jentz](http://beyama.de), Germany.
 
-MIT License. See the included MIT-LICENSE file.
+MIT License. See the included LICENSE file.
