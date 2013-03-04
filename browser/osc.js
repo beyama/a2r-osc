@@ -446,8 +446,9 @@
             value = args[_j];
             code = null;
             if (typeof value === 'object' && ((value != null ? value.type : void 0) != null)) {
-              code = value.type;
-              type = OSC_TYPES[code] || OSC_TYPES_BY_NAME[code];
+              type = value.type;
+              type = OSC_TYPES[type] || OSC_TYPES_BY_NAME[type];
+              code = type.code;
               if (!type) {
                 throw new Error("Unsupported type `" + code + "`");
               }

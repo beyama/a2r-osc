@@ -401,6 +401,17 @@
         expect(msg["arguments"]).to.have.length(1);
         return expect(msg["arguments"]).to.contain(23);
       });
+      it("should construct message from address and object with named type", function() {
+        var msg;
+        msg = new Message("/test", {
+          type: "integer",
+          value: 23
+        });
+        expect(msg.address).to.be("/test");
+        expect(msg.typeTag).to.be("i");
+        expect(msg["arguments"]).to.have.length(1);
+        return expect(msg["arguments"]).to.contain(23);
+      });
       return it("should throw an error if a type isn't supported", function() {
         expect(function() {
           return new Message("/test", {

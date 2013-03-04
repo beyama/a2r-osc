@@ -347,8 +347,9 @@ do (exports)->
           code = null
   
           if typeof value is 'object' and value?.type?
-            code = value.type
-            type = OSC_TYPES[code] || OSC_TYPES_BY_NAME[code]
+            type = value.type
+            type = OSC_TYPES[type] || OSC_TYPES_BY_NAME[type]
+            code = type.code
             throw new Error("Unsupported type `#{code}`") unless type
   
             # Types without argument data have no sizeOf method

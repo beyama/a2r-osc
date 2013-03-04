@@ -277,6 +277,13 @@ describe "Message", ->
       expect(msg.arguments).to.have.length 1
       expect(msg.arguments).to.contain 23
 
+    it "should construct message from address and object with named type", ->
+      msg = new Message("/test", { type: "integer", value: 23 })
+      expect(msg.address).to.be "/test"
+      expect(msg.typeTag).to.be "i"
+      expect(msg.arguments).to.have.length 1
+      expect(msg.arguments).to.contain 23
+
     it "should throw an error if a type isn't supported", ->
        expect(-> new Message("/test", { type: "y", value: 23 })).to.throwError()
        expect(-> new Message("/test", "y", 23)).to.throwError()
