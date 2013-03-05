@@ -371,6 +371,9 @@ do (exports)->
   
     # Add a value to the arguments list
     add: (code, value)->
+      # delete buffer cache
+      delete @buffer if @buffer
+
       if value is undefined
         value = code
         code  = null
@@ -391,10 +394,9 @@ do (exports)->
         @typeTag = code
       @
   
-    # Convenience method, creates an OSC packet generator,
-    # generates a packet and returns the buffer.
+    # Creates an OSC packet buffer.
     toBuffer: (dict)->
-      if nodeBuffer
+      @buffer ||= if nodeBuffer
         new OscBufferPacketGenerator(@, dict).generate()
       else
         new OscArrayBufferPacketGenerator(@, dict).generate()
@@ -441,6 +443,9 @@ do (exports)->
   
     # Add a message to elements list and return the message.
     addElement: (address, typeTag, args)->
+      # delete buffer cache
+      delete @buffer if @buffer
+
       if address instanceof Message
         @elements.push address
         address
@@ -456,10 +461,9 @@ do (exports)->
       @addElement(address, typeTag, args)
       @
   
-    # Convenience method, creates an instance of OscPacketGenerator,
-    # generates packet and returns the buffer.
+    # Creates an OSC packet buffer.
     toBuffer: (dict)->
-      if nodeBuffer
+      @buffer ||= if nodeBuffer
         new OscBufferPacketGenerator(@, dict).generate()
       else
         new OscArrayBufferPacketGenerator(@, dict).generate()

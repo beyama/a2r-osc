@@ -475,6 +475,9 @@
       };
 
       Message.prototype.add = function(code, value) {
+        if (this.buffer) {
+          delete this.buffer;
+        }
         if (value === void 0) {
           value = code;
           code = null;
@@ -501,11 +504,7 @@
       };
 
       Message.prototype.toBuffer = function(dict) {
-        if (nodeBuffer) {
-          return new OscBufferPacketGenerator(this, dict).generate();
-        } else {
-          return new OscArrayBufferPacketGenerator(this, dict).generate();
-        }
+        return this.buffer || (this.buffer = nodeBuffer ? new OscBufferPacketGenerator(this, dict).generate() : new OscArrayBufferPacketGenerator(this, dict).generate());
       };
 
       Message.prototype.equal = function(other) {
@@ -577,6 +576,9 @@
 
       Bundle.prototype.addElement = function(address, typeTag, args) {
         var msg;
+        if (this.buffer) {
+          delete this.buffer;
+        }
         if (address instanceof Message) {
           this.elements.push(address);
           return address;
@@ -595,11 +597,7 @@
       };
 
       Bundle.prototype.toBuffer = function(dict) {
-        if (nodeBuffer) {
-          return new OscBufferPacketGenerator(this, dict).generate();
-        } else {
-          return new OscArrayBufferPacketGenerator(this, dict).generate();
-        }
+        return this.buffer || (this.buffer = nodeBuffer ? new OscBufferPacketGenerator(this, dict).generate() : new OscArrayBufferPacketGenerator(this, dict).generate());
       };
 
       Bundle.prototype.equal = function(other) {

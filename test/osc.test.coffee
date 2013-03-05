@@ -344,11 +344,26 @@ describe "Message", ->
       it "should throw an error for unsupported types", ->
         expect(-> msg.add({})).to.throwError()
 
+      it "should delete the buffer cache", ->
+        msg.add(1)
+        buffer = msg.toBuffer()
+        expect(msg.buffer).to.be buffer
+        msg.add(2)
+        expect(msg.buffer).to.be undefined
+
     describe "with type code", ->
 
       it "should cast value", ->
         msg.add("i", 12.4)
         expect(msg.arguments).to.contain 12
+
+  describe ".toBuffer", ->
+    it "should generate and cache a packet buffer", ->
+      msg = new Message("/test", ["hello", 12])
+      buffer = msg.toBuffer()
+
+      expect(isBuffer(buffer)).to.be true
+      expect(buffer).to.be msg.toBuffer()
 
   describe ".isPattern", ->
 
@@ -425,6 +440,14 @@ describe "Bundle", ->
       expect(message.address).to.be "/test"
       expect(message.arguments[0]).to.be 12
 
+    it "should delete the buffer cache", ->
+      bundle = new Bundle
+      expect(bundle.addElement("/test", 12)).to.be.a Message
+      buffer = bundle.toBuffer()
+      expect(bundle.buffer).to.be buffer
+      bundle.addElement("/test", 12)
+      expect(bundle.buffer).to.be undefined
+
   describe ".add", ->
 
     it "should call addElement and return itself", ->
@@ -454,6 +477,14 @@ describe "Bundle", ->
       for elem, i in bundle.elements
         expect(elem).not.to.be bundle2.elements[i]
         expect(elem.equal(bundle2.elements[i])).to.be true
+
+  describe ".toBuffer", ->
+    it "should generate and cache a packet buffer", ->
+      bundle = new Bundle(new Date).add("/test", 12.8)
+      buffer = bundle.toBuffer()
+
+      expect(isBuffer(buffer)).to.be true
+      expect(buffer).to.be bundle.toBuffer()
 
 describe "AbstractOscPacketGenerator", ->
 
