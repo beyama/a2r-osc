@@ -1,0 +1,12 @@
+*.swp                                                                   
+*.swo
+*.md
+.git*
+Cakefile
+docs/
+examples/
+test/
+lib-cov/*
+coverage.html
+node_modules
+browser/*test*
